@@ -1,10 +1,10 @@
 import { useEffect, useRef, type Ref } from 'react'
+import { Link } from 'react-router'
 import { useSetPlayed } from '@/api/queries/series'
-import { MarkerLabel } from '@/components/CornerLabel'
-import { PlayOverlay } from '@/components/PlayOverlay'
-import { WatchedToggle } from '@/components/WatchedToggle'
+import { MediaTile } from '@/components/MediaTile'
 import { episodeLabel } from '@/domain/media'
 import { runtimeMinutes, type EpisodeDetails } from '@/domain/series'
+import { episodePath } from '@/features/home/links'
 
 type Props = {
   episodes: readonly EpisodeDetails[]
@@ -57,49 +57,35 @@ function EpisodeCard({ ref, episode, played, isNext, showSpoilers, onPlay }: Car
   const label = episodeLabel(episode)
 
   return (
-    <li ref={ref} className="group relative min-w-0">
-      {/* The whole picture is the play button. */}
-      <button
-        type="button"
-        onClick={onPlay}
+    <li ref={ref} className="relative min-w-0">
+      <MediaTile
+        aspect="thumb"
+        roundedTop
+        imageUrl={episode.stillUrl}
+        blurred={blurred}
         title={`Play ${label} ${episode.name}`.trim()}
-        className={`relative block aspect-video w-full overflow-hidden rounded-t bg-neutral-800 ring-accent-400 focus-visible:outline-none focus-visible:ring-2 ${
-          isNext ? 'ring-2' : ''
-        }`}
-      >
-        {episode.stillUrl && (
-          <img
-            src={episode.stillUrl}
-            alt=""
-            loading="lazy"
-            className={`size-full object-cover transition ${blurred ? 'scale-110 blur-md' : ''}`}
-          />
-        )}
-        <PlayOverlay />
-        {isNext && (
-          <MarkerLabel>NEXT</MarkerLabel>
-        )}
-        {progress !== undefined && (
-          <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/60">
-            <span className="block h-full bg-accent-500" style={{ width: `${Math.round(progress * 100)}%` }} />
-          </span>
-        )}
-      </button>
-
-      {/* Watched toggle: always visible once watched, otherwise on hover. */}
-      <WatchedToggle
-        watched={played}
-        label={label || episode.name}
-        onToggle={() => setPlayed.mutate({ itemId: episode.id, played: !played, episodes: [episode] })}
+        onPlay={onPlay}
+        marker={isNext ? 'NEXT' : undefined}
+        selected={isNext}
+        progress={progress}
+        watched={{
+          watched: played,
+          label: label || episode.name,
+          onToggle: () => setPlayed.mutate({ itemId: episode.id, played: !played, episodes: [episode] }),
+        }}
       />
 
-      <div className="rounded-b bg-neutral-900 px-2 py-1">
+      {/* The banner opens the episode page. */}
+      <Link
+        to={episodePath(episode.id, episode.seriesId)}
+        className="group/banner block rounded-b bg-neutral-900 px-2 py-1 transition-colors hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-accent-400"
+      >
         <div className="flex items-baseline gap-1.5 text-xs">
           <span className="shrink-0 text-neutral-500 tabular-nums">{label}</span>
-          <span className={`truncate font-medium ${played ? 'text-neutral-400' : ''}`}>{episode.name}</span>
+          <span className={`truncate font-medium group-hover/banner:text-accent-300 ${played ? 'text-neutral-400' : ''}`}>{episode.name}</span>
         </div>
         <div className="text-[11px] text-neutral-500">{[aired, minutes && `${minutes} min`].filter(Boolean).join(' · ')}</div>
-      </div>
+      </Link>
     </li>
   )
 }

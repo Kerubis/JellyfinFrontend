@@ -35,6 +35,11 @@ export function PlaybackDeviceSection() {
         onChange={(v) => update({ allowMkvDirectPlay: v })}
       />
       <CheckboxField label="Always transcode" checked={settings.forceTranscode} onChange={(v) => update({ forceTranscode: v })} />
+      <CheckboxField
+        label="Styled ASS/SSA subtitles (fonts, positions, effects)"
+        checked={settings.styledAss}
+        onChange={(v) => update({ styledAss: v })}
+      />
       <p className="text-xs text-neutral-500">
         Detected: {containers} · video {video} · audio {audio} · HLS {caps.hls || 'no'}
       </p>

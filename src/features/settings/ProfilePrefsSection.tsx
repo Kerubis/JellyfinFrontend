@@ -1,6 +1,7 @@
-import { usePref, usePrefsSaveState } from '@/api/prefs-context'
+import { usePref } from '@/api/prefs-context'
 import { CheckboxField, NumberField, SelectField } from '@/components/form'
-import type { CardSize, PlaybackPrefs, SkipMode } from '@/domain/prefs'
+import { SKIP_LIMITS, type CardSize, type PlaybackPrefs, type SkipMode } from '@/domain/prefs'
+import { LibrarySkipTimes } from './LibrarySkipTimes'
 
 const SKIP_OPTIONS: { value: SkipMode; label: string }[] = [
   { value: 'auto', label: 'Skip automatically' },
@@ -27,7 +28,6 @@ const BACKGROUNDS = [
   { value: '0.85', label: 'Dark' },
 ]
 
-const SAVE_LABEL = { idle: 'Synced', saving: 'Saving…', error: 'Sync failed, retrying…' } as const
 
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">{children}</h2>
@@ -35,17 +35,11 @@ function SectionTitle({ children }: { children: string }) {
 
 export function PlaybackPrefsSection() {
   const playback = usePref('playback')
-  const saveState = usePrefsSaveState()
   const p = playback.value
 
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between">
-        <SectionTitle>Playback</SectionTitle>
-        <span className={`text-xs ${saveState === 'error' ? 'text-red-400' : 'text-neutral-500'}`}>
-          {SAVE_LABEL[saveState]}
-        </span>
-      </div>
+      <SectionTitle>Playback</SectionTitle>
       <CheckboxField label="Autoplay next episode" checked={p.autoplayNext} onChange={(v) => playback.update({ autoplayNext: v })} />
       <NumberField
         label="Countdown before next episode"
@@ -69,6 +63,23 @@ export function PlaybackPrefsSection() {
         options={RESUME_OPTIONS}
         onChange={(v) => playback.update({ resume: v })}
       />
+      <NumberField
+        label="Skip back (← and button)"
+        value={p.skipBack}
+        min={SKIP_LIMITS.min}
+        max={SKIP_LIMITS.max}
+        suffix="s"
+        onChange={(v) => playback.update({ skipBack: v })}
+      />
+      <NumberField
+        label="Skip forward (→ and button)"
+        value={p.skipForward}
+        min={SKIP_LIMITS.min}
+        max={SKIP_LIMITS.max}
+        suffix="s"
+        onChange={(v) => playback.update({ skipForward: v })}
+      />
+      <LibrarySkipTimes />
       <SelectField label="Intro" value={p.skipIntro} options={SKIP_OPTIONS} onChange={(v) => playback.update({ skipIntro: v })} />
       <SelectField label="Outro / credits" value={p.skipOutro} options={SKIP_OPTIONS} onChange={(v) => playback.update({ skipOutro: v })} />
     </section>

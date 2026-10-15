@@ -12,7 +12,7 @@ export function HiddenSection() {
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">Hidden from Currently Watching</h2>
       {hiddenIds.length === 0 ? (
-        <p className="text-xs text-neutral-500">Nothing hidden. Use × on a Currently Watching card to remove it.</p>
+        <p className="text-xs text-neutral-500">Nothing hidden. Use ⋯ → “Remove from Currently Watching” on a card to hide it.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {hiddenIds.map((id) => (

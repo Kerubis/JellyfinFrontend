@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
 type Option<T extends string> = { value: T; label: string }
 
@@ -96,6 +96,50 @@ export function CheckboxField({
       />
       {label}
       {children}
+    </label>
+  )
+}
+
+/** Number input that may be left empty (= use the default, shown as placeholder); saved on blur / Enter. */
+export function OptionalNumberField({
+  label,
+  value,
+  placeholder,
+  min,
+  max,
+  suffix,
+  onChange,
+}: {
+  label: string
+  value: number | undefined
+  placeholder: string
+  min: number
+  max: number
+  suffix?: string
+  onChange: (value: number | undefined) => void
+}) {
+  const [text, setText] = useState(value?.toString() ?? '')
+  const commit = () => {
+    const n = Number(text)
+    const next = text.trim() === '' || !Number.isFinite(n) ? undefined : Math.min(max, Math.max(min, Math.round(n)))
+    setText(next?.toString() ?? '')
+    if (next !== value) onChange(next)
+  }
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+      {label}
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={text}
+        placeholder={placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+        className="w-16 rounded border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-right text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none"
+      />
+      {suffix}
     </label>
   )
 }

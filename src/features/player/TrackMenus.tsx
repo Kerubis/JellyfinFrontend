@@ -14,6 +14,27 @@ function audioLabel(a: AudioStream): string {
   return `${languageName(a.language)}${details ? ` · ${details}` : ''}`
 }
 
+const SUBTITLE_FORMATS: Record<string, string> = {
+  ass: 'ASS',
+  ssa: 'SSA',
+  subrip: 'SRT',
+  srt: 'SRT',
+  webvtt: 'VTT',
+  vtt: 'VTT',
+  pgssub: 'PGS',
+  hdmv_pgs_subtitle: 'PGS',
+  dvdsub: 'VobSub',
+  dvd_subtitle: 'VobSub',
+  dvbsub: 'DVB',
+  mov_text: 'TX3G',
+}
+
+/** "ASS", "SRT", "PGS", ... (unknown codecs in upper case). */
+function subtitleFormat(s: SubtitleStream): string | undefined {
+  const codec = s.codec?.toLowerCase()
+  return codec ? (SUBTITLE_FORMATS[codec] ?? codec.toUpperCase()) : undefined
+}
+
 function subtitleLabel(s: SubtitleStream): string {
   const parts = [languageName(s.language), s.title, s.isForced && !/forced/i.test(s.title ?? '') ? 'forced' : '']
   return parts.filter(Boolean).join(' · ')
@@ -99,6 +120,7 @@ export function SubtitleMenu({ state, dispatch }: MenuProps) {
           {subtitles.map((s) => (
             <Option key={s.index} selected={s.index === current} onClick={() => choose(s.index, close)} hint={s.isText ? undefined : 'burned in'}>
               {subtitleLabel(s)}
+              {subtitleFormat(s) && <span className="ml-1.5 text-xs text-neutral-500">{subtitleFormat(s)}</span>}
             </Option>
           ))}
           <div className="mt-1 flex items-center gap-2 border-t border-white/10 px-3 pt-2 pb-1 text-sm">

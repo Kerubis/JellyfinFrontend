@@ -13,7 +13,10 @@ export type Session = {
   signIn: (account: SignedInAccount) => void
   /** Switches to a stored profile; null returns to the profile picker. */
   switchAccount: (userId: string | null) => void
-  signOut: (userId: string) => Promise<void>
+  /** `lockPicker`: remembered profiles need their password again (used when a kid profile signs out). */
+  signOut: (userId: string, options?: { lockPicker?: boolean }) => Promise<void>
+  /** Remembered profiles can't be switched to without signing in again (until the next sign-in). */
+  pickerLocked: boolean
 }
 
 export const SessionContext = createContext<Session | null>(null)

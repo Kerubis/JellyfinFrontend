@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { Link } from 'react-router'
+import { usePref } from '@/api/prefs-context'
 import { useSession, useSignedIn } from '@/api/session-context'
 import { Avatar } from '@/components/Avatar'
 
@@ -11,6 +12,7 @@ export function ProfileMenu() {
   const { accounts, switchAccount, signOut } = useSession()
   const menuRef = useRef<HTMLDetailsElement>(null)
   const others = accounts.filter((a) => a.userId !== account.userId)
+  const { kidMode } = usePref('safety').value
 
   function run(action: () => void) {
     menuRef.current?.removeAttribute('open')
@@ -24,24 +26,33 @@ export function ProfileMenu() {
         <span className="text-sm">{account.name}</span>
       </summary>
       <div className="absolute right-0 z-20 mt-1 w-52 rounded border border-neutral-800 bg-neutral-900 p-1 shadow-lg">
-        <Link to="/settings" className={ITEM} onClick={() => menuRef.current?.removeAttribute('open')}>
-          Settings
-        </Link>
-        <hr className="my-1 border-neutral-800" />
-        {others.map((a) => (
-          <button key={a.userId} type="button" className={ITEM} onClick={() => run(() => switchAccount(a.userId))}>
-            <Avatar name={a.name} url={a.avatarUrl} />
-            <span className="truncate">{a.name}</span>
-            {!a.accessToken && <span className="ml-auto text-[10px] text-neutral-500">signed out</span>}
+        {kidMode ? (
+          // Kid mode: no settings, no switching – only signing out (which locks the profile picker).
+          <button type="button" className={ITEM} onClick={() => run(() => void signOut(account.userId, { lockPicker: true }))}>
+            Sign out
           </button>
-        ))}
-        <button type="button" className={ITEM} onClick={() => run(() => switchAccount(null))}>
-          Switch / add profile…
-        </button>
-        <hr className="my-1 border-neutral-800" />
-        <button type="button" className={`${ITEM} text-red-300`} onClick={() => run(() => void signOut(account.userId))}>
-          Sign out
-        </button>
+        ) : (
+          <>
+            <Link to="/settings" className={ITEM} onClick={() => menuRef.current?.removeAttribute('open')}>
+              Settings
+            </Link>
+            <hr className="my-1 border-neutral-800" />
+            {others.map((a) => (
+              <button key={a.userId} type="button" className={ITEM} onClick={() => run(() => switchAccount(a.userId))}>
+                <Avatar name={a.name} url={a.avatarUrl} />
+                <span className="truncate">{a.name}</span>
+                {!a.accessToken && <span className="ml-auto text-[10px] text-neutral-500">signed out</span>}
+              </button>
+            ))}
+            <button type="button" className={ITEM} onClick={() => run(() => switchAccount(null))}>
+              Switch / add profile…
+            </button>
+            <hr className="my-1 border-neutral-800" />
+            <button type="button" className={`${ITEM} text-red-300`} onClick={() => run(() => void signOut(account.userId))}>
+              Sign out
+            </button>
+          </>
+        )}
       </div>
     </details>
   )

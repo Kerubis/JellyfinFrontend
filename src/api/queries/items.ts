@@ -1,6 +1,7 @@
 import { ImageType } from '@jellyfin/sdk/lib/generated-client/models'
 import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import type { MediaItem } from '@/domain/media'
 import { apiFor } from '../client'
 import { toMediaItem } from '../mappers'
@@ -26,4 +27,25 @@ export function useItemsByIds(ids: readonly string[]) {
       return (data.Items ?? []).map((dto) => toMediaItem(server, dto))
     },
   })
+}
+
+/** Library (collection folder) an item lives in, cached; resolves to undefined when not found. */
+export function useItemLibraryResolver() {
+  const { server, account } = useSignedIn()
+  const queryClient = useQueryClient()
+  return useCallback(
+    (itemId: string) =>
+      queryClient.fetchQuery({
+        queryKey: ['user', account.userId, 'itemLibrary', itemId],
+        staleTime: Infinity,
+        queryFn: async (): Promise<string | null> => {
+          const { data } = await getLibraryApi(apiFor(server.url, account.accessToken)).getAncestors({
+            itemId,
+            userId: account.userId,
+          })
+          return data.find((a) => a.Type === 'CollectionFolder')?.Id ?? null
+        },
+      }),
+    [server, account, queryClient],
+  )
 }

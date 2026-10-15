@@ -30,12 +30,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(later)` designed now,
 | D18 | `following.hidden` only applies to **Currently Watching**; New Episodes still lists hidden shows. Entries are `{ id, at }` (prefs v2); they're removed only by Unhide or by playing the item after `at` | Lets you clear Currently Watching without losing track of new episodes; a new episode alone doesn't bring a show back. `minDateLastSavedForUser` is ignored by the server (12.2.0), so recent plays come from `SortBy=DatePlayed` |
 | D19 | Series page watched state also comes from the played/unplayed lists (D15), not from `Shows/{id}/Episodes` UserData (verified wrong for e.g. Spider S1E8). Marking watched updates those cached lists optimistically instead of refetching them | Home and series page always agree; no 700 KB refetch per click |
 | D20 | Accent color = **Jellyfin blue `#00a4dc`**, defined once as `accent-*` in `@theme` (`src/index.css`); components use `accent-*`, never a raw palette color | Recolouring the app is a one-place change |
-| D21 | **Fixed image corner slots** everywhere (home cards, season posters, episode stills): top-left = unwatched count (`CountLabel`), bottom-left = NEW/NEXT (`MarkerLabel`), top-right = action (watched toggle, remove). Positions live in `components/corners.ts` | Same information is always in the same place |
+| D21 | **Fixed image corner slots** everywhere (home cards, season posters, episode stills): top-left = unwatched count (`CountLabel`), bottom-left = NEW/NEXT (`MarkerLabel`), top-right = watched toggle, bottom-right = ⋯ action menu (`CardMenu`, e.g. Open series / Remove from Currently Watching). Positions live in `components/corners.ts` | Same information is always in the same place |
 | D22 | **Start position is applied client-side** (`hls.js` `startPosition` / `currentTime` after metadata), `PlaybackInfo` is requested without `StartTimeTicks` | The HLS playlist always covers the whole file, so seeking and resume work the same for direct play and HLS |
 | D23 | Subtitles in M5: text tracks fetched as WebVTT (`Stream.vtt`) and rendered natively; ASS loses styling until JASSUB (M7) | Usable anime playback now without burning subs in on the server |
 | D24 | Text subtitles are drawn by our own overlay (`SubtitleOverlay`), not by the browser's `::cue` rendering | `::cue` can't be positioned (e.g. above the controls) and its line boxes leave gaps; the browser still does parsing and timing |
 | D25 | `PlaybackInfo` track choices always carry `MediaSourceId` (query + body) | Verified on 12.2: without it the server silently ignores `AudioStreamIndex` / `SubtitleStreamIndex`, including "off" (-1) |
 | D26 | Direct play only when the chosen audio is the file's default track; otherwise the server remuxes with the chosen track | Browsers can't switch audio tracks inside a file (`audioTracks` is not generally available) |
+| D27 | **One tile component + one action hook**: `MediaTile` renders every image with all overlays (play, count, NEW/NEXT, progress, ✓, ⋯, ring, spoiler blur); `useMediaActions(item)` defines what they do per item kind (series: next episode / whole series / series menu; season; episode; movie). Sections only override where the meaning differs (Currently Watching and New Episodes: ✓ = next / new episodes) | Overlay design and behaviour change in one place; library, search and every home row behave the same. No confirmation when marking a whole series/season (decided: ✓ again undoes it) |
+| D28 | "Recently Added" always queries `/Items/Latest` **per video library** and merges by the newer of `DateCreated` / `DateLastMediaAdded` | Verified on 12.2: without `parentId` the endpoint leaves out whole libraries (no movies even with limit 200). Episodes / seasons of the same show are then grouped into one series card (`groupBySeries`), fetching 2× the limit to make up for it |
+| D29 | **One caption component** (`MediaCaption`) for the two lines under every tile: title, then movie: year · series: years · N seasons · season: Season N · N episodes · episode: S01 E05 (Currently Watching: the next episode). Year links to the item's library filtered by year (library resolved via ancestors on click, cached); season → series page with that season; episode → episode view in its series page | Same text and links everywhere; New Episodes no longer shows the episode range |
+| D30 | Soft limits live in the **kid's own synced prefs** (`safety`, written by an admin; `safetyUsage`, written by the kid's player). Kid-mode sign-out locks the profile picker instead of a PIN | Verified that admins can write other users' prefs; works across devices without our own backend. Soft by design (a kid using the API could change them) |
 | D12 | One `deviceId` per browser, shared by all profiles on it | Stable identity for the Jellyfin dashboard / HA. To verify: switching profiles on one device doesn't revoke the other profile's token |
 
 ---
@@ -257,7 +261,7 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Sections other than Currently Watching are single rows that scroll horizontally (‹ › buttons appear when there is more); Currently Watching stays a wrapping grid
 - [x] Auto refresh for always-on screens: unplayed list every 5 min, played list every 15 min, other sections every 10 min
 - [x] Verify in the browser with a user that has watch history
-- [x] Hide from Currently Watching: × on the card (series and movies), "Unhide" list in Settings (D18). Unhides only manually or when something of it is played after hiding (any client; checked against the 50 most recently played items every 5 min)
+- [x] Hide from Currently Watching: ⋯ menu on the card → "Remove from Currently Watching" (series and movies); ✓ top-right marks the card's next episode (or the movie) watched, "Unhide" list in Settings (D18). Unhides only manually or when something of it is played after hiding (any client; checked against the 50 most recently played items every 5 min)
 - [x] Follow action: UI comes with the series page (M4); prefs and the rule already support it
 
 ### M4: Series page
@@ -270,6 +274,9 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Spoiler protection (Settings → "Show spoilers"): unwatched episodes get a blurred still; titles stay visible (episode descriptions aren't shown at all)
 - [ ] Verify in the browser (mark watched/unwatched on the real server, season marking, follow/hide round trip)
 
+- [x] Episode view inside the series page (`/series/:seriesId/episode/:episodeId`; left column stays, right column shows the episode instead of the list; season of the episode selected; old `/episode/:id` links redirect): still (play / resume, ✓, progress, spoiler blur), series + season links, title, air date, runtime, watched / stopped-at, spoiler-protected description, Play / Resume / Play from start / Mark watched, audio + subtitle languages, previous / next episode
+- [x] Series page accepts `?sn=<season number>` besides `?season=<id>` (links where only the number is known)
+
 ### M5: Persistent player core
 - [x] Player engine (`features/player/engine.ts`: framework-free state store + **command dispatcher**, D8), bound to React via `useSyncExternalStore`, mounted at app root (`PlayerProvider` + `PlayerOverlay` outside `<Routes>`)
 - [x] Device profile from detected browser codecs (`lib/codecs.ts` → `api/playback.ts`); per-device settings (max bitrate, MKV direct play, force transcode) in Settings, stored locally. 10-bit H.264 forced to transcode, text subs External, image subs burned in
@@ -278,7 +285,9 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Progress reporting: start (first frame) / progress (10 s, pause, seek) / stopped (stop, end, next item, profile switch; `sendBeacon` on page unload). Stopping also ends the server transcode
 - [x] Resume position (profile setting "Partly watched": always / ask / start over; position from the item endpoint)
 - [x] Starting playback of a hidden series/movie unhides it right away
-- [x] Controls (one bottom bar): full-width seek bar with buffer; left: −10 s, play/pause, +10 s, next, stop, time; centre: title; right: volume, subtitle menu (text tracks as WebVTT, stopgap until M6/M7), mini player, fullscreen; auto-hide after 3 s. Keyboard: Space/K, ←/→, ↑/↓, F, M, N, Esc. OS media keys via Media Session
+- [x] Controls (one bottom bar): full-width seek bar with buffer; left: skip back, play/pause, skip forward, next, stop, time; centre: title; right: volume, audio + subtitle menus, mini player, picture-in-picture (P; subtitles switch to native rendering there), cast, fullscreen; auto-hide after 3 s. Keyboard: Space/K, ←/→, ↑/↓, F, M, N, Esc. OS media keys via Media Session
+- [x] Cast button (browser Remote Playback API) left of fullscreen; Chrome's own overlay Cast button hidden. Only shows when a device is available and the source is castable: direct-play URLs the device can reach (not `localhost` in dev, not hls.js/MSE streams)
+- [x] Skip back/forward times (default 5 s, synced) with optional per-library overrides; buttons, ←/→ and OS media keys all use `skipBack`/`skipForward` commands resolved by the engine for the playing item's library
 - [x] Play buttons wired: Currently Watching poster (series: next episode, movie), series poster, season circle, episode still
 - [x] "Next episode" (button, N, end screen) via `Shows/{id}/Episodes?adjacentTo` (full autoplay/countdown is M8)
 - [x] Verify in the browser: Chromium (direct play MKV) and Firefox (HLS remux), resume, progress shows up in the Jellyfin dashboard, watched state after finishing, mini player while browsing
@@ -294,27 +303,38 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [ ] Verify in the browser: DanMachi (jpn/eng audio, Full + Signs/Songs subs), American Made (PGS forced → burned in; Off → audio-only transcode), a library rule for Anime
 
 ### M7: ASS/SSA subtitles
-- [ ] Ask: add JASSUB dependency
-- [ ] Render ASS with attachments fonts, fallback font, works over HLS and direct play
-- [ ] Timing offset for mid-file transcodes
-- [ ] PGS: server burn-in path
+- [x] JASSUB 2.5.21 added (approved; libass in WebAssembly, LGPL-2.1+). Loaded lazily: the worker/wasm (~0.9 MB gzipped) and fallback font only download when an ASS track plays. `optimizeDeps.exclude: ['jassub']` keeps its `new URL(..., import.meta.url)` assets working in dev. `lfa-ponyfill`'s postinstall (refreshes a Google Fonts list) is left blocked: not needed
+- [x] Render ASS/SSA with full styling: original `Stream.ass` + fonts from the MKV attachments (`/Videos/{id}/{source}/Attachments/{index}`, verified: 9 fonts on DanMachi), JASSUB's bundled fallback font, no local-font permission prompts. Works over HLS and direct play (it follows the `<video>` element), in full view and the mini player; subtitle delay maps to JASSUB's `timeOffset`
+- [x] Fallbacks: plain text overlay if JASSUB fails or "Styled ASS/SSA subtitles" is off (per-device setting, for weak clients); native WebVTT in picture-in-picture
+- [x] Timing offset for mid-file transcodes: not needed: HLS playlists always start at 0 and the start position is applied client-side (D22), so `currentTime` is the file time
+- [x] PGS: server burn-in path (M6)
+- [x] Verify in the browser: DanMachi Full / Signs & Songs with embedded fonts, a typeset-heavy episode, mini player, delay, PiP fallback, CPU load on the HTPC
+- [x] Later (optional): COOP/COEP headers for multi-threaded JASSUB (needs the server/proxy to send them; single-threaded works without)
 
 ### M8: Autoplay & segments
-- [ ] Next-episode resolution (series order, specials)
-- [ ] "Up next" card with configurable countdown, play now / cancel, preload
-- [ ] Media segments: skip intro/recap/outro (auto / button / off)
-- [ ] "Still watching?" prompt
-- [ ] Carry over tracks/volume/fullscreen
+- [x] Next-episode resolution: series order via `adjacentTo`; from a regular episode, specials (season 0) placed in between are skipped; from a special it simply continues
+- [x] "Up next" card (bottom right): poster, `SxxEyy` (+ title only with spoilers on), countdown bar, Play now / Cancel. Appears at the outro if only outro (+ preview) remains, otherwise `countdown` seconds before the end, so post-credit scenes aren't cut. Pausing stops the countdown; seeking back hides it again
+- [x] Preload: item, track choice and PlaybackInfo of the next episode are fetched when "Up next" appears and reused when it starts
+- [x] Segments: Jellyfin MediaSegments if a provider fills them (none installed yet, see open questions), else derived from chapter names ("OP/Opening" → intro, "ED/Ending" → outro, recap, preview; cold opens like "Intro/Prologue/Avant" are not skipped; implausible lengths ignored). Verified chapter naming on several anime series
+- [x] Skip intro/recap (setting "Intro") and outro/preview (setting "Outro / credits"): auto / button / off. Skipping credits that run to the end goes straight to the next episode
+- [x] "Still watching?" after N autoplays without any input (setting; any command resets the counter), Continue / Stop
+- [x] Carry over: tracks (series memory / rules), volume, fullscreen; subtitle delay within the same series
+- [x] Verify in the browser: autoplay chain with countdown, Cancel, pause during credits, "Skip intro" button on a series with OP/ED chapters (e.g. Date A Live, Chainsaw Man), post-credit scene (One-Punch Man), Still watching after 3
 
 ### M9: Dashboard editor
-- [ ] Edit mode: reorder (up/down), show/hide, rename, per-section options
-- [ ] Add/remove sections, reset to default
-- [ ] Per-device visibility overrides
+- [x] Editor in Settings → "Home" tab (moved there from an edit mode on the home page), changes saved right away (synced prefs)
+- [x] Per section: ↑/↓ reorder, visible, rename (empty = default title), remove; options per type: max items (empty = default), "NEW" window / "only added in the last N days" (New Episodes), libraries (Recently Added, none = all)
+- [x] Add sections (any type, also several of the same type, e.g. Recently Added per library), reset to default
+- [x] Per-device visibility: "Hide on this device" (device-override layer, `dashboard.deviceHidden`, never synced)
+- [ ] Verify in the browser; note: once the dashboard is edited, new default section types no longer appear on their own (use "Add section" / "Reset to default")
 
 ### M10: Profiles & child safety
-- [ ] Settings screen showing Jellyfin parental controls (rating, tags, libraries, access schedules) + clear "not allowed" states
-- [ ] Soft limits: daily budget, episodes per session, bedtime, kid mode UI
-- [ ] Admin-only editing, optional PIN for settings/profile switching
+- [x] Settings → "Profiles & limits" (admins): every other user's **Jellyfin limits** (max rating level, allowed libraries, blocked tags, allowed time windows) edited via `POST /Users/{id}/Policy` (full policy read fresh, patched, written back) + **app limits** written into that user's synced prefs (verified: admins can write other users' DisplayPreferences)
+- [x] Non-admin users see their own restrictions read-only; clear "not allowed right now" message when Jellyfin refuses a user outside the allowed times
+- [x] Soft limits (`domain/safety.ts`, per profile): daily watch-time budget (counted every 15 s while playing, saved per minute, synced, stops playback with a friendly screen when used up), bedtime (no new playback incl. autoplay, running episode may finish, notice 10 min before), budget notice 5 min before
+- [x] Kid mode UI: no settings route, no dashboard editing, profile menu only "Sign out"; signing out from kid mode locks the profile picker on that device (remembered profiles need password / Quick Connect until the next sign-in)
+- [x] Decided: no PIN; no "episodes per session" limit
+- [ ] Verify with a kid user (none on the server yet): kid mode, budget, bedtime, Jellyfin limits as seen by the kid
 
 ### M11: Home Assistant remote control
 - [ ] `api/socket.ts`: Jellyfin WebSocket, keep-alive, reconnect
@@ -323,13 +343,23 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [ ] Document HA setup in README
 
 ### M12: Library browsing & search
-- [ ] Library grid with filters (genre, year, watched, sort), virtualized if needed
-- [ ] Global search (debounced)
+- [x] Header navigation: Home + one link per video library
+- [x] Library grid (`/library/:id`): sort (name, date added / new episode for shows, year, rating, last played) + direction, watched filter, genre, year; filters live in the URL; pages of 120 loaded on scroll (no virtualization needed at ~150 items, revisit for big libraries)
+- [x] Cards: series open their page; movies/episodes play from the poster
+- [x] Global search in the header (debounced 300 ms, `/` focuses it): `/search?q=` with "Shows & movies" and "Episodes". Note: Jellyfin only matches stored titles (DanMachi → "dungeon", not "danmachi")
+- [x] Verify in the browser
+- [x] Library, search and all home rows use the shared tile overlay (play, ✓, ⋯, unwatched count) via `MediaItemCard` (D27)
+- [x] Movie detail page (`/item/:id`): poster (play / resume, ✓, progress), year · runtime · age rating · ★ · critics, genres, tagline, description, Play / Resume / Play from start / Mark watched / Favorite, director, writers, cast with roles, studio, audio + subtitle languages, "More like this" row (`/Items/{id}/Similar`); series / episode ids redirect to their pages
+- [ ] Later: A–Z jump for long libraries
+
+### Later: proper Chromecast
+- [ ] Google Cast SDK sender + Jellyfin's Chromecast receiver app: the TV fetches from the server itself (transcodes, track choice, remote control all work). Needs the Cast SDK script from gstatic (ask first: external dependency)
 
 ### M13: TV / 10-foot mode & polish
 - [ ] Spatial navigation + focus styles across components
 - [ ] TV device preset (card size, UI scale, hidden sections)
-- [ ] Trickplay thumbnails, chapters in seek bar
+- [x] Chapters in the seek bar (gaps at chapter starts, intro amber / outro rose highlights, hover tooltip with time + chapter name)
+- [ ] Trickplay thumbnails in the seek-bar tooltip
 - [ ] Performance pass (image sizes via `fillWidth`/`quality`, query caching), responsive layout
 - [ ] Production build + deployment notes (static hosting / served next to Jellyfin)
 
@@ -339,9 +369,9 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 
 - [~] **Server URL, Jellyfin version** (≥10.10 needed for media segments), test user / libraries → fill into CLAUDE.md. Done: `http://172.16.100.228:8096`, v12.2.0. Still open: test user / libraries
 - [ ] **Server: NVENC/CUDA hardware encoding fails** (`CUDA_ERROR_NO_DEVICE` in the FFmpeg log, 2026-10-15), so every real transcode returns HTTP 500 (e.g. American Made: DTS-HD audio + forced PGS subtitle). Direct play/remux is unaffected. Fix GPU access for the Jellyfin container, or switch hardware acceleration off until then
-- [ ] Does the server have a segment provider (e.g. Intro Skipper)?
+- [ ] Segment provider: none installed (checked 2026-10-15: no plugin, `/MediaSegments` empty). The app falls back to chapter names; installing e.g. Intro Skipper would cover files without chapters
 - [x] **Following**: decided: separate list in prefs (`following.followed`), favorites stay independent. "Import favorites" can come later.
-- [ ] Kids: separate Jellyfin user(s) already, or to be created?
+- [ ] Kids: no kid user yet (2026-10-15); create one in the Jellyfin dashboard to test M10
 - [ ] TV browser: Chromium/Firefox in kiosk mode? Input device (keyboard, remote, gamepad, CEC)? This affects the codec profile and navigation.
 - [ ] How common are PGS subs in the library (decides when client-side PGS is worth it)?
 - [ ] `CustomPrefs` value size limits and whether admins can write other users' prefs (M2 spike)

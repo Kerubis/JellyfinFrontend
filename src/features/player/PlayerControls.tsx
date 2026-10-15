@@ -1,58 +1,58 @@
+import { usePref } from '@/api/prefs-context'
 import { PlayIcon } from '@/components/PlayOverlay'
 import {
   BackIcon,
+  CastIcon,
   CloseIcon,
   ExpandIcon,
   ForwardIcon,
   FullscreenIcon,
   MinimizeIcon,
   NextIcon,
+  PipIcon,
   PauseIcon,
   StopIcon,
   VolumeIcon,
 } from '@/components/icons'
+import { skipSeconds } from '@/domain/prefs'
 import { formatTime, nowPlayingTitle, type PlayerCommand, type PlayerState } from '@/domain/player'
+import { NowPlayingLinks } from './NowPlayingLinks'
+import { SeekBar } from './SeekBar'
 import { AudioMenu, ICON_BUTTON, SubtitleMenu } from './TrackMenus'
+import type { RemoteState } from './useRemotePlayback'
 
 type Props = {
   state: PlayerState
   dispatch: (command: PlayerCommand) => void
 }
 
-function SeekBar({ state, dispatch }: Pick<Props, 'state' | 'dispatch'>) {
-  const { position, duration, bufferedUntil } = state
-  const max = duration > 0 ? duration : 1
-  return (
-    <div className="relative">
-      <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded bg-white/20">
-        <div className="h-full rounded bg-white/30" style={{ width: `${Math.min(100, (bufferedUntil / max) * 100)}%` }} />
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={max}
-        step={1}
-        value={Math.min(position, max)}
-        onChange={(e) => dispatch({ type: 'seek', seconds: e.target.valueAsNumber })}
-        aria-label="Seek"
-        className="relative block w-full accent-accent-500"
-      />
-    </div>
-  )
+/** Skip times for the playing item's library (for labels; the engine resolves the same values). */
+function useSkipSeconds(state: PlayerState) {
+  return skipSeconds(usePref('playback').value, state.item?.libraryId)
 }
 
-export function BottomBar({ state, dispatch }: Props) {
+/** Thin vertical divider between groups of control-bar buttons. */
+function Separator() {
+  return <span aria-hidden className="mx-1.5 h-6 w-px shrink-0 bg-white/25" />
+}
+
+type CastProps = {
+  cast?: { state: RemoteState; prompt: () => void }
+  pip?: { supported: boolean; active: boolean; toggle: () => void }
+}
+
+export function BottomBar({ state, dispatch, cast, pip }: Props & CastProps) {
+  const skip = useSkipSeconds(state)
   const playing = state.status === 'playing'
   const ready = !!state.source
-  const { title, subtitle: itemSubtitle } = nowPlayingTitle(state.item)
   const method = state.source?.playMethod
   return (
     <div className="flex flex-col gap-1 bg-gradient-to-t from-black/85 via-black/60 to-transparent px-4 pt-12 pb-3">
       <SeekBar state={state} dispatch={dispatch} />
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
         <div className="flex items-center gap-1">
-          <button type="button" className={ICON_BUTTON} title="Back 10 s (←)" disabled={!ready} onClick={() => dispatch({ type: 'seekBy', seconds: -10 })}>
-            <BackIcon className="size-6" />
+          <button type="button" className={ICON_BUTTON} title={`Back ${skip.back} s (←)`} disabled={!ready} onClick={() => dispatch({ type: 'skipBack' })}>
+            <BackIcon seconds={skip.back} className="size-6" />
           </button>
           <button
             type="button"
@@ -63,8 +63,8 @@ export function BottomBar({ state, dispatch }: Props) {
           >
             {playing ? <PauseIcon className="size-7" /> : <PlayIcon className="size-7" />}
           </button>
-          <button type="button" className={ICON_BUTTON} title="Forward 10 s (→)" disabled={!ready} onClick={() => dispatch({ type: 'seekBy', seconds: 10 })}>
-            <ForwardIcon className="size-6" />
+          <button type="button" className={ICON_BUTTON} title={`Forward ${skip.forward} s (→)`} disabled={!ready} onClick={() => dispatch({ type: 'skipForward' })}>
+            <ForwardIcon seconds={skip.forward} className="size-6" />
           </button>
           <button type="button" className={ICON_BUTTON} title="Next episode (N)" disabled={!state.nextItemId} onClick={() => dispatch({ type: 'next' })}>
             <NextIcon className="size-6" />
@@ -72,14 +72,14 @@ export function BottomBar({ state, dispatch }: Props) {
           <button type="button" className={ICON_BUTTON} title="Stop" onClick={() => dispatch({ type: 'stop' })}>
             <StopIcon className="size-6" />
           </button>
+          <Separator />
           <span className="ml-2 text-sm whitespace-nowrap text-neutral-200 tabular-nums">
             {formatTime(state.position)} <span className="text-neutral-500">/ {formatTime(state.duration)}</span>
           </span>
         </div>
 
         <div className="min-w-0 max-w-[40vw] text-center">
-          <div className="truncate text-sm font-semibold">{title}</div>
-          {itemSubtitle && <div className="truncate text-xs text-neutral-300">{itemSubtitle}</div>}
+          <NowPlayingLinks state={state} dispatch={dispatch} />
         </div>
 
         <div className="flex items-center justify-end gap-1">
@@ -103,9 +103,31 @@ export function BottomBar({ state, dispatch }: Props) {
           />
           <AudioMenu state={state} dispatch={dispatch} />
           <SubtitleMenu state={state} dispatch={dispatch} />
+          <Separator />
           <button type="button" className={ICON_BUTTON} title="Mini player (Esc)" onClick={() => dispatch({ type: 'setView', view: 'mini' })}>
             <MinimizeIcon className="size-6" />
           </button>
+          {pip?.supported && (
+            <button
+              type="button"
+              className={`${ICON_BUTTON} ${pip.active ? 'text-accent-400' : ''}`}
+              title={pip.active ? 'Back from picture-in-picture (P)' : 'Picture-in-picture (P)'}
+              disabled={!state.source}
+              onClick={pip.toggle}
+            >
+              <PipIcon active={pip.active} className="size-6" />
+            </button>
+          )}
+          {cast && cast.state !== 'unavailable' && (
+            <button
+              type="button"
+              className={`${ICON_BUTTON} ${cast.state === 'connected' ? 'text-accent-400' : ''} ${cast.state === 'connecting' ? 'animate-pulse' : ''}`}
+              title={cast.state === 'connected' ? 'Casting – click to stop or switch' : 'Cast to a device'}
+              onClick={cast.prompt}
+            >
+              <CastIcon active={cast.state === 'connected'} className="size-6" />
+            </button>
+          )}
           <button type="button" className={ICON_BUTTON} title="Fullscreen (F)" onClick={() => dispatch({ type: 'toggleFullscreen' })}>
             <FullscreenIcon active={state.fullscreen} className="size-6" />
           </button>
@@ -116,6 +138,7 @@ export function BottomBar({ state, dispatch }: Props) {
 }
 
 export function MiniControls({ state, dispatch }: Pick<Props, 'state' | 'dispatch'>) {
+  const skip = useSkipSeconds(state)
   const playing = state.status === 'playing'
   const { title, subtitle } = nowPlayingTitle(state.item)
   const progress = state.duration > 0 ? state.position / state.duration : 0
@@ -139,8 +162,8 @@ export function MiniControls({ state, dispatch }: Pick<Props, 'state' | 'dispatc
           </button>
         </div>
         <div className="flex items-center justify-center gap-2 pb-3">
-          <button type="button" className={ICON_BUTTON} title="Back 10 s" onClick={() => dispatch({ type: 'seekBy', seconds: -10 })}>
-            <BackIcon />
+          <button type="button" className={ICON_BUTTON} title={`Back ${skip.back} s`} onClick={() => dispatch({ type: 'skipBack' })}>
+            <BackIcon seconds={skip.back} />
           </button>
           <button type="button" className={`${ICON_BUTTON} size-12 bg-accent-600/90 text-black hover:bg-accent-500`} title={playing ? 'Pause' : 'Play'} onClick={() => dispatch({ type: 'togglePause' })}>
             {playing ? <PauseIcon className="size-6" /> : <PlayIcon className="size-6" />}

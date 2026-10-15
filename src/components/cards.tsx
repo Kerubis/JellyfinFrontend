@@ -1,9 +1,7 @@
 import { useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useScrollOverflow } from '@/hooks/useScrollOverflow'
-import { CountLabel, MarkerLabel } from './CornerLabel'
-import { PlayOverlay } from './PlayOverlay'
-import { CORNER } from './corners'
+import { MediaTile, type MediaTileActions } from './MediaTile'
 import type { CardSize } from '@/domain/prefs'
 
 const POSTER_MIN: Record<CardSize, string> = {
@@ -56,14 +54,14 @@ function ScrollButton({ direction, onClick }: { direction: 1 | -1; onClick: () =
       onClick={onClick}
       aria-label={direction === 1 ? 'Scroll right' : 'Scroll left'}
       // Covers the image area (cards' text lines are below); fades into the row.
-      className={`absolute top-0 bottom-8 ${side} flex w-10 items-center justify-center from-neutral-950 via-neutral-950/80 to-transparent text-2xl text-neutral-200 hover:text-white focus-visible:outline-2 focus-visible:outline-accent-400`}
+      className={`absolute top-0 bottom-8 ${side} flex w-10 items-center justify-center from-black/70 via-black/40 to-transparent text-2xl text-neutral-200 hover:text-white focus-visible:outline-2 focus-visible:outline-accent-400`}
     >
       {direction === 1 ? '›' : '‹'}
     </button>
   )
 }
 
-type CardProps = {
+type CardProps = MediaTileActions & {
   to: string
   title: string
   subtitle?: ReactNode
@@ -73,94 +71,24 @@ type CardProps = {
   /** NEW / NEXT marker, bottom-left. */
   marker?: string
   progress?: number
-  /** When set, the image is a play button (with hover overlay) and only the text links to `to`. */
-  onPlay?: () => void
-  /** Small secondary action on hover (e.g. "open series" while the card itself plays). */
-  secondary?: { to: string; label: string }
-  /** Small "remove" button top-right on hover. */
-  onRemove?: { label: string; onClick: () => void }
   tooltip?: string
+  /** Replaces the default title/subtitle block (e.g. MediaCaption with its own links). */
+  caption?: ReactNode
 }
 
-function CardImage({ url, aspect, children }: { url?: string; aspect: string; children?: ReactNode }) {
+/** Card = MediaTile (image + all overlays) + title/subtitle linking to `to`. */
+function Card({ variant, to, title, subtitle, tooltip, caption, ...tile }: CardProps & { variant: 'poster' | 'thumb' }) {
   return (
-    <div className={`relative ${aspect} overflow-hidden rounded bg-neutral-800`}>
-      {url && <img src={url} alt="" loading="lazy" decoding="async" className="size-full object-cover" />}
-      {children}
-    </div>
-  )
-}
-
-function Overlays({ count, marker, progress }: Pick<CardProps, 'count' | 'marker' | 'progress'>) {
-  return (
-    <>
-      {count !== undefined && count > 0 && <CountLabel count={count} />}
-      {marker && <MarkerLabel>{marker}</MarkerLabel>}
-      {progress !== undefined && (
-        // Above the bottom-left marker so the progress stays readable.
-        <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/60">
-          <span className="block h-full bg-accent-500" style={{ width: `${Math.round(progress * 100)}%` }} />
-        </span>
-      )}
-    </>
-  )
-}
-
-function Card({ variant, ...props }: CardProps & { variant: 'poster' | 'thumb' }) {
-  const { to, title, subtitle, imageUrl, onPlay, secondary, onRemove, tooltip } = props
-  const focus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400'
-  const image = (
-    <CardImage url={imageUrl} aspect={variant === 'poster' ? 'aspect-[2/3]' : 'aspect-video'}>
-      <Overlays {...props} />
-      {onPlay && <PlayOverlay />}
-      <span className="absolute inset-0 rounded ring-accent-400 transition group-hover:ring-2" />
-    </CardImage>
-  )
-  const text = (
-    <>
-      <div className="mt-1 truncate text-xs leading-tight font-medium">{title}</div>
-      {subtitle && <div className="truncate text-[11px] leading-tight text-neutral-400">{subtitle}</div>}
-    </>
-  )
-  return (
-    <li className="group relative min-w-0">
-      {onPlay ? (
-        <>
-          <button type="button" onClick={onPlay} title={tooltip ?? title} className={`block w-full rounded ${focus}`}>
-            {image}
-          </button>
-          <Link to={to} className={`block rounded hover:text-accent-300 ${focus}`}>
-            {text}
-          </Link>
-        </>
-      ) : (
-        <Link to={to} title={tooltip ?? title} className={`block rounded ${focus}`}>
-          {image}
-          {text}
-        </Link>
-      )}
-      {secondary && (
+    <li className="relative min-w-0">
+      <MediaTile {...tile} aspect={variant} title={tooltip ?? title} href={to} />
+      {caption ?? (
         <Link
-          to={secondary.to}
-          title={secondary.label}
-          aria-label={secondary.label}
-          className="absolute right-1 bottom-9 hidden size-6 items-center justify-center rounded-full bg-black/80 text-xs text-neutral-100 group-focus-within:flex group-hover:flex hover:bg-accent-600"
+          to={to}
+          className="block rounded hover:text-accent-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
         >
-          ⋯
+          <div className="mt-1 truncate text-xs leading-tight font-medium">{title}</div>
+          {subtitle && <div className="truncate text-[11px] leading-tight text-neutral-400">{subtitle}</div>}
         </Link>
-      )}
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove.onClick}
-          title={onRemove.label}
-          aria-label={onRemove.label}
-          className={`group/remove absolute ${CORNER.tr} hidden items-center justify-center bg-black/75 p-2 group-focus-within:flex group-hover:flex`}
-        >
-          <span className="flex size-6 items-center justify-center rounded-full bg-neutral-700 text-sm text-neutral-200 transition group-hover/remove:bg-red-600 group-hover/remove:text-white">
-            ×
-          </span>
-        </button>
       )}
     </li>
   )

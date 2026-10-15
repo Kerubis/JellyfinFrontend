@@ -89,10 +89,16 @@ export function toMediaItem(server: Server, dto: BaseItemDto): MediaItem {
     name: dto.Name ?? 'Untitled',
     seriesId: dto.SeriesId ?? undefined,
     seriesName: dto.SeriesName ?? undefined,
+    seasonId: dto.SeasonId ?? undefined,
     year: dto.ProductionYear ?? undefined,
+    endYear: kind === 'series' && dto.Status === 'Ended' && dto.EndDate ? new Date(dto.EndDate).getFullYear() : undefined,
+    childCount: dto.ChildCount ?? undefined,
     dateCreated: dto.DateCreated ?? undefined,
+    // DateLastMediaAdded is sometimes unset ("0001-…") or older than DateCreated: take the newer valid one.
+    addedAt: [dto.DateCreated, dto.DateLastMediaAdded].filter((d): d is string => !!d && !d.startsWith('0001')).sort().at(-1),
     progress: position > 0 && percent ? percent / 100 : undefined,
     lastPlayedAt: dto.UserData?.LastPlayedDate ?? undefined,
+    played: dto.UserData?.Played ?? undefined,
   }
 
   if (kind === 'episode') {

@@ -31,17 +31,17 @@ export const NextIcon = (p: IconProps) => (
   </Icon>
 )
 
-export const BackIcon = (p: IconProps) => (
+export const BackIcon = ({ seconds, ...p }: IconProps & { seconds: number }) => (
   <Icon {...p}>
     <path d="M12 5V2L7 6l5 4V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8Z" />
-    <text x="12" y="16.5" fontSize="6.5" textAnchor="middle" fontWeight="700">10</text>
+    <text x="12" y="16.5" fontSize={seconds >= 100 ? 5 : 6.5} textAnchor="middle" fontWeight="700">{seconds}</text>
   </Icon>
 )
 
-export const ForwardIcon = (p: IconProps) => (
+export const ForwardIcon = ({ seconds, ...p }: IconProps & { seconds: number }) => (
   <Icon {...p}>
     <path d="M12 5V2l5 4-5 4V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8Z" />
-    <text x="12" y="16.5" fontSize="6.5" textAnchor="middle" fontWeight="700">10</text>
+    <text x="12" y="16.5" fontSize={seconds >= 100 ? 5 : 6.5} textAnchor="middle" fontWeight="700">{seconds}</text>
   </Icon>
 )
 
@@ -96,6 +96,21 @@ export const AudioTrackIcon = (p: IconProps) => (
       fill="none"
       strokeLinejoin="round"
     />
+  </Icon>
+)
+
+export const CastIcon = ({ active, ...p }: IconProps & { active: boolean }) => (
+  <Icon {...p}>
+    <path d="M3 17a4 4 0 0 1 4 4M3 13a8 8 0 0 1 8 8M3 9a12 12 0 0 1 12 12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+    <path d="M3 7V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+    {active && <path d="M7 7h10v10h-1.5A12 12 0 0 0 7 8.5Z" />}
+  </Icon>
+)
+
+export const PipIcon = ({ active, ...p }: IconProps & { active: boolean }) => (
+  <Icon {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <rect x="12" y="11" width="7" height="6" rx="1" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" />
   </Icon>
 )
 

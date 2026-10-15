@@ -4,6 +4,7 @@
 // a `migrate` step only when an existing field changes meaning; new fields just get a default.
 
 import { DEFAULT_SECTIONS, normalizeSections, type DashboardSection } from './dashboard'
+import { DEFAULT_SAFETY, HHMM, type SafetyPrefs, type SafetyUsage } from './safety'
 import type { PartialRule, SubtitleMode, TrackMemory } from './tracks'
 import { normalizeLanguage } from '@/lib/languages'
 
@@ -18,6 +19,19 @@ export type PlaybackPrefs = {
   skipOutro: SkipMode
   resume: 'always' | 'ask' | 'startOver'
   playbackRate: number
+  /** Seconds for the skip buttons / arrow keys. */
+  skipBack: number
+  skipForward: number
+  /** Per-library skip times by library id; missing values use the ones above. */
+  librarySkip: Record<string, { back?: number; forward?: number }>
+}
+
+export const SKIP_LIMITS = { min: 1, max: 300 } as const
+
+/** Skip times for an item's library (library override → profile setting). */
+export function skipSeconds(playback: PlaybackPrefs, libraryId: string | undefined): { back: number; forward: number } {
+  const library = libraryId ? playback.librarySkip[libraryId] : undefined
+  return { back: library?.back ?? playback.skipBack, forward: library?.forward ?? playback.skipForward }
 }
 
 export type CardSize = 'xs' | 'sm' | 'md'
@@ -68,6 +82,8 @@ function isHiddenEntry(value: unknown): value is HiddenEntry {
 
 export type DashboardPrefs = {
   sections: DashboardSection[]
+  /** Section ids hidden on one device only; only ever set through the device-override layer. */
+  deviceHidden: string[]
 }
 
 export type SubtitlePrefs = {
@@ -99,6 +115,10 @@ export type PrefsSchema = {
   subtitles: SubtitlePrefs
   languages: LanguagePrefs
   seriesTracks: SeriesTrackPrefs
+  /** Soft limits; written by an admin into the (kid's) own prefs. */
+  safety: SafetyPrefs
+  /** Watch time counted today (written by the profile's own player). */
+  safetyUsage: SafetyUsage
 }
 
 export type PrefKey = keyof PrefsSchema
@@ -126,6 +146,21 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
       skipOutro: 'button',
       resume: 'always',
       playbackRate: 1,
+      skipBack: 5,
+      skipForward: 5,
+      librarySkip: {},
+    },
+    normalize: (v) => {
+      const seconds = (n: unknown) =>
+        typeof n === 'number' && Number.isFinite(n) ? clamp(Math.round(n), SKIP_LIMITS.min, SKIP_LIMITS.max) : undefined
+      const librarySkip: PlaybackPrefs['librarySkip'] = {}
+      for (const [id, value] of Object.entries(isRecord(v.librarySkip) ? v.librarySkip : {})) {
+        if (!isRecord(value)) continue
+        const back = seconds(value.back)
+        const forward = seconds(value.forward)
+        if (back !== undefined || forward !== undefined) librarySkip[id] = { back, forward }
+      }
+      return { ...v, skipBack: seconds(v.skipBack) ?? 5, skipForward: seconds(v.skipForward) ?? 5, librarySkip }
     },
   },
   ui: {
@@ -167,6 +202,24 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
       ),
     }),
   },
+  safety: {
+    version: 1,
+    defaults: DEFAULT_SAFETY,
+    normalize: (v) => ({
+      kidMode: v.kidMode,
+      dailyMinutes: clamp(Math.round(v.dailyMinutes), 0, 24 * 60),
+      bedtime: {
+        enabled: isRecord(v.bedtime) && v.bedtime.enabled === true,
+        start: isRecord(v.bedtime) && typeof v.bedtime.start === 'string' && HHMM.test(v.bedtime.start) ? v.bedtime.start : DEFAULT_SAFETY.bedtime.start,
+        end: isRecord(v.bedtime) && typeof v.bedtime.end === 'string' && HHMM.test(v.bedtime.end) ? v.bedtime.end : DEFAULT_SAFETY.bedtime.end,
+      },
+    }),
+  },
+  safetyUsage: {
+    version: 1,
+    defaults: { date: '', seconds: 0 },
+    normalize: (v) => ({ date: v.date, seconds: clamp(Math.round(v.seconds), 0, 24 * 3600) }),
+  },
   seriesTracks: {
     version: 1,
     defaults: { entries: {} },
@@ -174,8 +227,11 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
   },
   dashboard: {
     version: 1,
-    defaults: { sections: DEFAULT_SECTIONS },
-    normalize: (v) => ({ sections: normalizeSections(v.sections) }),
+    defaults: { sections: DEFAULT_SECTIONS, deviceHidden: [] },
+    normalize: (v) => ({
+      sections: normalizeSections(v.sections),
+      deviceHidden: v.deviceHidden.filter((id) => typeof id === 'string'),
+    }),
   },
 }
 

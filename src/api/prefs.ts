@@ -17,22 +17,25 @@ export async function readCustomPrefs(api: Api, userId: string, displayPreferenc
   return data
 }
 
-export async function fetchProfilePrefs(server: Server, account: SignedInAccount): Promise<PrefsValues> {
-  const dto = await readCustomPrefs(apiFor(server.url, account.accessToken), account.userId, PREFS_ID)
+/** `userId` defaults to the signed-in user; an admin may read another user's prefs (verified on 12.2). */
+export async function fetchProfilePrefs(server: Server, account: SignedInAccount, userId = account.userId): Promise<PrefsValues> {
+  const dto = await readCustomPrefs(apiFor(server.url, account.accessToken), userId, PREFS_ID)
   return decodeAllPrefs(dto.CustomPrefs ?? {})
 }
 
 /**
- * Writes the changed keys. Read-modify-write on a fresh copy, so keys changed on another
- * device in the meantime survive (last write wins per key, not per document).
+ * Writes the changed keys of `userId` (default: the signed-in user; admins may write other users).
+ * Read-modify-write on a fresh copy, so keys changed on another device in the meantime survive
+ * (last write wins per key, not per document).
  */
 export async function writeProfilePrefs(
   server: Server,
   account: SignedInAccount,
   changes: Partial<PrefsValues>,
+  userId = account.userId,
 ): Promise<PrefsValues> {
   const api = apiFor(server.url, account.accessToken)
-  const dto = await readCustomPrefs(api, account.userId, PREFS_ID)
+  const dto = await readCustomPrefs(api, userId, PREFS_ID)
   const custom = { ...dto.CustomPrefs }
   for (const key of PREF_KEYS) {
     if (changes[key] !== undefined) custom[key] = encodePref(key, changes[key])
@@ -40,7 +43,7 @@ export async function writeProfilePrefs(
   await getDisplayPreferenceApi(api).updateDisplayPreferences({
     displayPreferencesId: PREFS_ID,
     client: PREFS_CLIENT,
-    userId: account.userId,
+    userId,
     displayPreferencesDto: { ...dto, CustomPrefs: custom },
   })
   return decodeAllPrefs(custom)

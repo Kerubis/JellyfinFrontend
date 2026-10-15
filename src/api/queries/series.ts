@@ -5,7 +5,9 @@ import { useMemo } from 'react'
 import { pickNextEpisode, pickSeasonEpisode } from '@/domain/currentlyWatching'
 import type { EpisodeRef } from '@/domain/media'
 import type { EpisodeDetails, Season, SeriesDetails } from '@/domain/series'
+import type { MediaTracks } from '@/domain/tracks'
 import { apiFor } from '../client'
+import { toMediaTracks } from '../playback'
 import { toEpisodeDetails, toSeason, toSeriesDetails } from '../mappers'
 import { useSignedIn } from '../session-context'
 import { useWatchData, watchKeys } from './home'
@@ -154,8 +156,67 @@ export function useSetPlayed() {
       // Small lists; the big played/unplayed lists catch up on their own refresh interval.
       void queryClient.invalidateQueries({ queryKey: keys.resumable })
       void queryClient.invalidateQueries({ queryKey: keys.recentlyPlayed })
+      // Grids and detail pages show the watched flag from their own data.
+      for (const list of ['libraryItems', 'list', 'search', 'movie', 'episode']) {
+        void queryClient.invalidateQueries({ queryKey: ['user', account.userId, list] })
+      }
       const seriesId = episodes[0]?.seriesId
       if (seriesId) void queryClient.invalidateQueries({ queryKey: ['user', account.userId, 'series', seriesId, 'episodes'] })
+    },
+  })
+}
+
+export type EpisodePageData = {
+  episode: EpisodeDetails
+  seriesName?: string
+  seasonId?: string
+  /** From the item endpoint (reliable, D15); the watch lists take precedence when loaded. */
+  played: boolean
+  tracks: MediaTracks
+  previousId?: string
+  nextId?: string
+}
+
+/** One episode with its tracks and neighbours (series order, specials included). */
+export function useEpisode(episodeId: string, enabled = true) {
+  const { server, account } = useSignedIn()
+  return useQuery({
+    queryKey: ['user', account.userId, 'episode', episodeId],
+    enabled: enabled && !!episodeId,
+    staleTime: 2 * MINUTE,
+    queryFn: async (): Promise<EpisodePageData> => {
+      const api = apiFor(server.url, account.accessToken)
+      const { data } = await getLibraryApi(api).getItem({ itemId: episodeId, userId: account.userId })
+      const episode = toEpisodeDetails(server, data)
+      if (!episode) throw new Error('This is not an episode.')
+      let previousId: string | undefined
+      let nextId: string | undefined
+      if (data.SeriesId) {
+        const { data: around } = await getShowApi(api).getEpisodes({
+          seriesId: data.SeriesId,
+          userId: account.userId,
+          adjacentTo: episodeId,
+          isMissing: false,
+          enableImages: false,
+          enableUserData: false,
+        })
+        const list = around.Items ?? []
+        const index = list.findIndex((e) => e.Id === episodeId)
+        if (index >= 0) {
+          previousId = list[index - 1]?.Id ?? undefined
+          nextId = list[index + 1]?.Id ?? undefined
+        }
+      }
+      const source = data.MediaSources?.[0]
+      return {
+        episode: { ...episode, overview: data.Overview ?? undefined },
+        seriesName: data.SeriesName ?? undefined,
+        seasonId: data.SeasonId ?? undefined,
+        played: !!data.UserData?.Played,
+        tracks: source ? toMediaTracks(source) : { mediaSourceId: episodeId, audio: [], subtitles: [] },
+        previousId,
+        nextId,
+      }
     },
   })
 }

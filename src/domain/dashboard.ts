@@ -25,14 +25,45 @@ export type DashboardSection = {
   }
 }
 
-export const SECTION_INFO: Record<SectionType, { title: string; defaultLimit: number }> = {
-  currentlyWatching: { title: 'Currently Watching', defaultLimit: 0 },
-  newEpisodes: { title: 'New Episodes', defaultLimit: 40 },
-  continueWatching: { title: 'Continue Watching', defaultLimit: 30 },
-  recentlyAdded: { title: 'Recently Added', defaultLimit: 40 },
-  following: { title: 'Following', defaultLimit: 0 },
-  favorites: { title: 'Favorites', defaultLimit: 60 },
-  unwatchedMovies: { title: 'Unwatched Movies', defaultLimit: 40 },
+export type SectionOption = 'limit' | 'days' | 'libraries'
+
+export const SECTION_INFO: Record<SectionType, { title: string; defaultLimit: number; description: string; options: SectionOption[] }> = {
+  currentlyWatching: {
+    title: 'Currently Watching',
+    defaultLimit: 0,
+    description: 'Started or followed shows with unwatched episodes, newest episode first; started movies',
+    options: ['limit', 'days'],
+  },
+  newEpisodes: {
+    title: 'New Episodes',
+    defaultLimit: 40,
+    description: 'Unwatched episodes of the shows you are watching, one card per show',
+    options: ['limit', 'days'],
+  },
+  continueWatching: { title: 'Continue Watching', defaultLimit: 30, description: 'Partly watched episodes and movies', options: ['limit'] },
+  recentlyAdded: { title: 'Recently Added', defaultLimit: 40, description: 'Newest additions, optionally from selected libraries', options: ['limit', 'libraries'] },
+  following: { title: 'Following', defaultLimit: 0, description: 'Shows you follow', options: ['limit'] },
+  favorites: { title: 'Favorites', defaultLimit: 60, description: 'Your Jellyfin favorites (shows and movies)', options: ['limit'] },
+  unwatchedMovies: { title: 'Unwatched Movies', defaultLimit: 40, description: 'Movies you have not seen, newest first', options: ['limit'] },
+}
+
+export const SECTION_TYPES = Object.keys(SECTION_INFO) as SectionType[]
+
+/** A new section of a type with a unique id. */
+export function createSection(type: SectionType, existing: readonly DashboardSection[]): DashboardSection {
+  const base = type.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+  let id = base
+  for (let n = 2; existing.some((s) => s.id === id); n++) id = `${base}-${n}`
+  return { id, type, visible: true, options: {} }
+}
+
+/** Moves the section at `index` by `delta` positions (clamped). */
+export function moveSection(sections: readonly DashboardSection[], index: number, delta: number): DashboardSection[] {
+  const target = Math.min(sections.length - 1, Math.max(0, index + delta))
+  const next = [...sections]
+  const [moved] = next.splice(index, 1)
+  if (moved) next.splice(target, 0, moved)
+  return next
 }
 
 export const DEFAULT_NEW_DAYS = 7

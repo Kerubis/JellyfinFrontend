@@ -9,6 +9,7 @@ import { SessionContext, type Session } from './session-context'
 const SERVER_KEY = 'jff.server'
 const ACCOUNTS_KEY = 'jff.accounts'
 const ACTIVE_KEY = 'jff.activeUserId'
+const PICKER_LOCK_KEY = 'jff.pickerLocked'
 
 function isSignedIn(account: Account | undefined): account is SignedInAccount {
   return !!account?.accessToken
@@ -19,10 +20,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [server, setServerState] = useState<Server | null>(() => readJson<Server | null>(SERVER_KEY, null))
   const [allAccounts, setAllAccounts] = useState<Account[]>(() => readJson<Account[]>(ACCOUNTS_KEY, []))
   const [activeUserId, setActiveUserId] = useState<string | null>(() => readJson<string | null>(ACTIVE_KEY, null))
+  const [pickerLocked, setPickerLocked] = useState(() => readJson<boolean>(PICKER_LOCK_KEY, false))
 
   useEffect(() => writeJson(SERVER_KEY, server), [server])
   useEffect(() => writeJson(ACCOUNTS_KEY, allAccounts), [allAccounts])
   useEffect(() => writeJson(ACTIVE_KEY, activeUserId), [activeUserId])
+  useEffect(() => writeJson(PICKER_LOCK_KEY, pickerLocked || null), [pickerLocked])
 
   const accounts = useMemo(
     () => (server ? allAccounts.filter((a) => a.serverId === server.id) : []),
@@ -55,6 +58,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [server, queryClient])
 
   const signIn = useCallback((next: SignedInAccount) => {
+    setPickerLocked(false)
     setAllAccounts((list) => [
       ...list.filter((a) => !(a.serverId === next.serverId && a.userId === next.userId)),
       next,
@@ -65,7 +69,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const switchAccount = useCallback((userId: string | null) => setActiveUserId(userId), [])
 
   const signOut = useCallback(
-    async (userId: string) => {
+    async (userId: string, options?: { lockPicker?: boolean }) => {
+      if (options?.lockPicker) setPickerLocked(true)
       const target = accounts.find((a) => a.userId === userId)
       if (server && isSignedIn(target)) {
         await endSession(server, target).catch((error: unknown) => console.warn('Session end failed', error))
@@ -78,8 +83,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   )
 
   const session = useMemo<Session>(
-    () => ({ server, accounts, account, setServer, forgetServer, signIn, switchAccount, signOut }),
-    [server, accounts, account, setServer, forgetServer, signIn, switchAccount, signOut],
+    () => ({ server, accounts, account, setServer, forgetServer, signIn, switchAccount, signOut, pickerLocked }),
+    [server, accounts, account, setServer, forgetServer, signIn, switchAccount, signOut, pickerLocked],
   )
 
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>

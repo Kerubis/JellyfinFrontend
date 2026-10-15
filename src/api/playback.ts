@@ -11,7 +11,7 @@ import {
   type MediaSourceInfo,
   type PlaybackProgressInfo,
 } from '@jellyfin/sdk/lib/generated-client/models'
-import { getLibraryApi, getMediaInfoApi, getSessionApi, getShowApi, getUserApi } from '@jellyfin/sdk/lib/utils/api'
+import { getLibraryApi, getMediaInfoApi, getMediaSegmentApi, getSessionApi, getShowApi, getUserApi } from '@jellyfin/sdk/lib/utils/api'
 import type { Server, SignedInAccount } from '@/domain/auth'
 import {
   TICKS_PER_SECOND,
@@ -23,6 +23,7 @@ import {
   type SourceRequest,
   type TextTrack,
 } from '@/domain/player'
+import { fromChapters, fromServerSegments, type Chapter, type Segment } from '@/domain/segments'
 import { ruleFromJellyfin, type MediaTracks, type PartialRule } from '@/domain/tracks'
 import { codecList, type BrowserCapabilities } from '@/lib/codecs'
 import { apiFor, itemImageUrl, jellyfin } from './client'
@@ -92,7 +93,7 @@ export function buildDeviceProfile(caps: BrowserCapabilities, settings: DevicePl
 
 // --- Item + PlaybackInfo ------------------------------------------------------------
 
-function toMediaTracks(source: MediaSourceInfo): MediaTracks {
+export function toMediaTracks(source: MediaSourceInfo): MediaTracks {
   const streams = source.MediaStreams ?? []
   return {
     mediaSourceId: source.Id ?? '',
@@ -131,7 +132,7 @@ export async function loadPlayableItem(
   server: Server,
   account: SignedInAccount,
   itemId: string,
-): Promise<{ item: NowPlaying; resumeSeconds: number; tracks: MediaTracks }> {
+): Promise<{ item: NowPlaying; resumeSeconds: number; tracks: MediaTracks; chapters: Chapter[] }> {
   const library = getLibraryApi(apiFor(server.url, account.accessToken))
   const [{ data }, ancestors] = await Promise.all([
     library.getItem({ itemId, userId: account.userId }),
@@ -161,7 +162,29 @@ export async function loadPlayableItem(
     },
     resumeSeconds: (data.UserData?.PlaybackPositionTicks ?? 0) / TICKS_PER_SECOND,
     tracks: source ? toMediaTracks(source) : { mediaSourceId: itemId, audio: [], subtitles: [] },
+    chapters: (data.Chapters ?? []).map((c) => ({ name: c.Name ?? '', start: (c.StartPositionTicks ?? 0) / TICKS_PER_SECOND })),
   }
+}
+
+/**
+ * Intro/outro/recap/preview: Jellyfin's media segments when a provider plugin supplies them,
+ * otherwise derived from chapter names ("OP", "ED", ...).
+ */
+export async function getSegments(
+  server: Server,
+  account: SignedInAccount,
+  itemId: string,
+  chapters: readonly Chapter[],
+  durationSeconds: number,
+): Promise<Segment[]> {
+  try {
+    const { data } = await getMediaSegmentApi(apiFor(server.url, account.accessToken)).getItemSegments({ itemId })
+    const segments = fromServerSegments(data.Items ?? [])
+    if (segments.length > 0) return segments
+  } catch {
+    // No segment support on the server: fall through to chapters.
+  }
+  return fromChapters(chapters, durationSeconds)
 }
 
 function textTracks(server: Server, account: SignedInAccount, itemId: string, source: MediaSourceInfo): TextTrack[] {
@@ -173,8 +196,21 @@ function textTracks(server: Server, account: SignedInAccount, itemId: string, so
       language: s.Language ?? undefined,
       // Jellyfin converts any text format to WebVTT on request.
       url: `${server.url}/Videos/${itemId}/${source.Id}/Subtitles/${s.Index}/0/Stream.vtt?api_key=${account.accessToken}`,
+      assUrl: ASS_CODECS.has(s.Codec?.toLowerCase() ?? '')
+        ? `${server.url}/Videos/${itemId}/${source.Id}/Subtitles/${s.Index}/0/Stream.${s.Codec?.toLowerCase()}?api_key=${account.accessToken}`
+        : undefined,
       isDefault: s.Index === source.DefaultSubtitleStreamIndex,
     }))
+}
+
+const ASS_CODECS = new Set(['ass', 'ssa'])
+const FONT_FILE = /\.(ttf|otf|ttc|woff2?)$/i
+
+/** Fonts embedded in the file (MKV attachments), served by Jellyfin per attachment index. */
+function fontUrls(server: Server, account: SignedInAccount, itemId: string, source: MediaSourceInfo): string[] {
+  return (source.MediaAttachments ?? [])
+    .filter((a) => /font|opentype|truetype/i.test(a.MimeType ?? '') || FONT_FILE.test(a.FileName ?? ''))
+    .map((a) => `${server.url}/Videos/${itemId}/${source.Id}/Attachments/${a.Index}?api_key=${account.accessToken}`)
 }
 
 /**
@@ -224,6 +260,7 @@ export async function getPlaybackSource(
     subtitleStreamIndex: request.subtitleIndex ?? undefined,
     burnedIn: !!chosenSubtitle && !chosenSubtitle.IsTextSubtitleStream,
     textTracks: textTracks(server, account, itemId, source),
+    fontUrls: fontUrls(server, account, itemId, source),
   }
   const staticUrl = () =>
     `${server.url}/Videos/${itemId}/stream?${new URLSearchParams({
@@ -254,20 +291,32 @@ export async function getUserLanguageRule(server: Server, account: SignedInAccou
   return ruleFromJellyfin(data.Configuration ?? {})
 }
 
-/** The episode after this one in series order, if any. */
+/**
+ * The episode after this one in series order. From a regular episode, specials (season 0) in
+ * between are skipped; from a special, the next item in order is taken as is.
+ */
 export async function getNextEpisodeId(server: Server, account: SignedInAccount, item: NowPlaying): Promise<string | undefined> {
   if (item.kind !== 'episode' || !item.seriesId) return undefined
-  const { data } = await getShowApi(apiFor(server.url, account.accessToken)).getEpisodes({
-    seriesId: item.seriesId,
-    userId: account.userId,
-    adjacentTo: item.id,
-    isMissing: false,
-    enableImages: false,
-    enableUserData: false,
-  })
-  const items = data.Items ?? []
-  const index = items.findIndex((e) => e.Id === item.id)
-  return index >= 0 ? (items[index + 1]?.Id ?? undefined) : undefined
+  const shows = getShowApi(apiFor(server.url, account.accessToken))
+  const skipSpecials = item.seasonNumber !== 0
+  let currentId = item.id
+  for (let hop = 0; hop < 10; hop++) {
+    const { data } = await shows.getEpisodes({
+      seriesId: item.seriesId,
+      userId: account.userId,
+      adjacentTo: currentId,
+      isMissing: false,
+      enableImages: false,
+      enableUserData: false,
+    })
+    const items = data.Items ?? []
+    const index = items.findIndex((e) => e.Id === currentId)
+    const next = index >= 0 ? items[index + 1] : undefined
+    if (!next?.Id) return undefined
+    if (!(skipSpecials && next.ParentIndexNumber === 0)) return next.Id
+    currentId = next.Id
+  }
+  return undefined
 }
 
 // --- Reporting (keeps watch state + "now playing" on the server correct) ---------------------

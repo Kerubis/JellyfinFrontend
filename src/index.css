@@ -15,4 +15,14 @@
 
 body {
   @apply bg-neutral-950 text-neutral-100 antialiased;
+  /* Jellyfin-coloured glow (violet top left, blue bottom right), fixed to the viewport on every page. */
+  background-image:
+    radial-gradient(ellipse 115% 95% at 0% 0%, rgb(170 92 195 / 0.26), transparent 75%),
+    radial-gradient(ellipse 115% 100% at 100% 100%, rgb(0 164 220 / 0.22), transparent 75%);
+  background-attachment: fixed;
+}
+
+/* Chrome draws its own Cast button over <video>; ours lives in the player's control bar. */
+video::-internal-media-controls-overlay-cast-button {
+  display: none;
 }

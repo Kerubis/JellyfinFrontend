@@ -1,5 +1,5 @@
 // Image corner slots, the same everywhere (home cards, season posters, episode stills):
-//   top-left: unwatched count · bottom-left: NEW / NEXT marker · top-right: action (watched toggle, remove)
+//   top-left: unwatched count · bottom-left: NEW / NEXT marker · top-right: watched toggle · bottom-right: ⋯ menu
 
 export type Corner = 'tl' | 'tr' | 'bl' | 'br'
 

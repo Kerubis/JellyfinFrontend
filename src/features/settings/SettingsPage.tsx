@@ -1,78 +1,113 @@
-import { useState, type FormEvent } from 'react'
-import { defaultDeviceName, getDeviceName, setDeviceName } from '@/api/client'
-import { useRefreshPrefsOnMount } from '@/api/prefs-context'
-import { useSession, useSignedIn } from '@/api/session-context'
-import { Button } from '@/components/Button'
-import { TextField } from '@/components/TextField'
+import type { ReactNode } from 'react'
+import { Navigate, useSearchParams } from 'react-router'
+import { usePref, useRefreshPrefsOnMount, usePrefsSaveState } from '@/api/prefs-context'
+import { useCurrentUser } from '@/api/queries/users'
+import { hasLimits } from '@/domain/safety'
+import { hasHardLimits } from '@/domain/users'
+import { DashboardEditor } from '@/features/home/DashboardEditor'
+import { DeviceNameSection, ServerSection } from './DeviceServerSection'
 import { HiddenSection } from './HiddenSection'
 import { LanguageSection } from './LanguageSection'
 import { PlaybackDeviceSection } from './PlaybackDeviceSection'
 import { PrefsDiagnostics } from './PrefsDiagnostics'
 import { DisplayPrefsSection, PlaybackPrefsSection, SubtitlePrefsSection } from './ProfilePrefsSection'
+import { ProfilesSection } from './ProfilesSection'
+
+type Tab = { id: string; label: string; content: () => ReactNode }
+
+const TABS: Tab[] = [
+  {
+    id: 'playback',
+    label: 'Playback',
+    content: () => (
+      <>
+        <PlaybackPrefsSection />
+        <PlaybackDeviceSection />
+      </>
+    ),
+  },
+  {
+    id: 'languages',
+    label: 'Subtitles & languages',
+    content: () => (
+      <>
+        <SubtitlePrefsSection />
+        <LanguageSection />
+      </>
+    ),
+  },
+  { id: 'home', label: 'Home', content: () => <DashboardEditor /> },
+  {
+    id: 'display',
+    label: 'Display',
+    content: () => (
+      <>
+        <DisplayPrefsSection />
+        <HiddenSection />
+      </>
+    ),
+  },
+  { id: 'profiles', label: 'Profiles', content: () => <ProfilesSection /> },
+  {
+    id: 'device',
+    label: 'Device & server',
+    content: () => (
+      <>
+        <DeviceNameSection />
+        <ServerSection />
+        {import.meta.env.DEV && <PrefsDiagnostics />}
+      </>
+    ),
+  },
+]
+
+const SAVE_LABEL = { idle: 'All changes synced', saving: 'Saving…', error: 'Sync failed, retrying…' } as const
 
 export function SettingsPage() {
-  const { server, account } = useSignedIn()
-  const { forgetServer, signOut } = useSession()
-  const [name, setName] = useState(getDeviceName)
-  const [saved, setSaved] = useState(false)
+  const [params, setParams] = useSearchParams()
   useRefreshPrefsOnMount()
+  const safety = usePref('safety').value
+  const me = useCurrentUser()
+  const saveState = usePrefsSaveState()
 
-  function saveDeviceName(event: FormEvent) {
-    event.preventDefault()
-    setDeviceName(name)
-    setName(getDeviceName())
-    setSaved(true)
-  }
+  // Kid mode has no settings (soft limit; the admin edits them from their own profile).
+  if (safety.kidMode) return <Navigate to="/" replace />
+
+  // "Profiles" only when there is something to show: admins manage others, others see their restrictions.
+  const showProfiles = !!me.data && (me.data.isAdmin || hasHardLimits(me.data.limits) || hasLimits(safety))
+  const tabs = TABS.filter((t) => t.id !== 'profiles' || showProfiles)
+  const active = tabs.find((t) => t.id === params.get('tab')) ?? tabs[0]
 
   return (
-    <div className="flex max-w-lg flex-col gap-6">
-      <PlaybackPrefsSection />
-      <PlaybackDeviceSection />
-      <SubtitlePrefsSection />
-      <LanguageSection />
-      <DisplayPrefsSection />
-      <HiddenSection />
+    <div className="flex max-w-3xl flex-col gap-5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h1 className="text-lg font-semibold">Settings</h1>
+        <span className={`text-xs ${saveState === 'error' ? 'text-red-400' : 'text-neutral-500'}`}>{SAVE_LABEL[saveState]}</span>
+      </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">This device</h2>
-        <form onSubmit={saveDeviceName} className="flex items-end gap-2">
-          <TextField
-            label="Device name"
-            className="flex-1"
-            value={name}
-            placeholder={defaultDeviceName()}
-            onChange={(e) => {
-              setName(e.target.value)
-              setSaved(false)
-            }}
-            hint="Shown in the Jellyfin dashboard and Home Assistant. Applies from the next sign-in."
-          />
-          <Button type="submit" variant="primary" className="mb-5">
-            {saved ? 'Saved' : 'Save'}
-          </Button>
-        </form>
-      </section>
+      <div role="tablist" aria-label="Settings" className="flex flex-wrap gap-1 border-b border-neutral-800">
+        {tabs.map((tab) => {
+          const selected = tab.id === active?.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setParams({ tab: tab.id }, { replace: true })}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+                selected ? 'border-accent-500 text-white' : 'border-transparent text-neutral-400 hover:text-neutral-100'
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">Server</h2>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-neutral-500">Name</dt>
-          <dd>{server.name}</dd>
-          <dt className="text-neutral-500">Version</dt>
-          <dd>{server.version}</dd>
-          <dt className="text-neutral-500">Address</dt>
-          <dd className="break-all">{server.url}</dd>
-          <dt className="text-neutral-500">Signed in as</dt>
-          <dd>{account.name}</dd>
-        </dl>
-        <div className="flex gap-2">
-          <Button onClick={() => void signOut(account.userId)}>Sign out</Button>
-          <Button variant="ghost" onClick={forgetServer}>
-            Change server
-          </Button>
-        </div>
-      </section>
-      {import.meta.env.DEV && <PrefsDiagnostics />}
+      <div role="tabpanel" className="flex max-w-2xl flex-col gap-8">
+        {active?.content()}
+      </div>
     </div>
   )
 }

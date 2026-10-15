@@ -12,11 +12,19 @@ import {
   type SourceRequest,
   type StartAt,
 } from '@/domain/player'
+import type { SkipMode } from '@/domain/prefs'
+import { segmentAt, upNextTime, type Chapter, type Segment } from '@/domain/segments'
 import { browserDefaultAudio, type MediaTracks, type TrackChoice } from '@/domain/tracks'
 import { readJson, writeJson } from '@/lib/storage'
 
 export type EngineDeps = {
-  loadItem: (itemId: string) => Promise<{ item: NowPlaying; resumeSeconds: number; tracks: MediaTracks }>
+  loadItem: (itemId: string) => Promise<LoadedItem>
+  /** Intro/outro/... from the server, or derived from chapters. */
+  getSegments: (item: NowPlaying, chapters: Chapter[]) => Promise<Segment[]>
+  /** Current autoplay / skip settings (profile prefs). */
+  autoplay: () => AutoplaySettings
+  /** Soft limits: why new playback isn't allowed right now, or null. */
+  playbackBlock: () => string | null
   getSource: (itemId: string, request: SourceRequest) => Promise<PlaybackSource>
   /** Picks audio/subtitle tracks from the language rules (per series, library, profile, Jellyfin). */
   resolveTracks: (item: NowPlaying, tracks: MediaTracks) => Promise<TrackChoice>
@@ -24,6 +32,8 @@ export type EngineDeps = {
   onTracksChosen?: (item: NowPlaying, tracks: MediaTracks, choice: TrackChoice) => void
   nextEpisodeId: (item: NowPlaying) => Promise<string | undefined>
   resumeMode: () => 'always' | 'ask' | 'startOver'
+  /** Skip times for an item (per library / profile). */
+  skipSeconds: (item: NowPlaying | undefined) => { back: number; forward: number }
   report: {
     start: (r: PlaybackReport) => Promise<void>
     progress: (r: PlaybackReport) => Promise<void>
@@ -36,7 +46,22 @@ export type EngineDeps = {
   onStopped?: (item: NowPlaying) => void
 }
 
+type LoadedItem = { item: NowPlaying; resumeSeconds: number; tracks: MediaTracks; chapters: Chapter[] }
+
+export type AutoplaySettings = {
+  enabled: boolean
+  countdownSeconds: number
+  /** Ask "Still watching?" after this many autoplays without input; 0 = never. */
+  stillWatchingAfter: number
+  skipIntro: SkipMode
+  skipOutro: SkipMode
+}
+
+/** Next episode, fetched while "Up next" counts down so the switch is instant. */
+type Prefetched = { itemId: string; loaded: LoadedItem; choice: TrackChoice; source?: PlaybackSource; at: number }
+
 const PROGRESS_INTERVAL_MS = 10_000
+const PREFETCH_MAX_AGE_MS = 5 * 60_000
 const VOLUME_KEY = 'jff.volume'
 
 const warn = (what: string) => (error: unknown) => console.warn(`Player: ${what} failed`, error)
@@ -55,6 +80,16 @@ export class PlayerEngine {
   private pendingResume: { token: number; item: NowPlaying; resumeSeconds: number } | null = null
   /** Tracks requested for the current item. */
   private choice: TrackChoice = { subtitleIndex: null }
+  /** Segments already auto-skipped (or skipped by button) for the current item. */
+  private handledSegments = new Set<Segment>()
+  private upNextTimer: number | undefined
+  /** "Up next" was cancelled for the current item. */
+  private upNextDismissed = false
+  /** Episodes started by autoplay since the last user input. */
+  private autoplayStreak = 0
+  private prefetched: Prefetched | null = null
+  /** PlaybackInfo prefetched for the item being started (used once by startSource). */
+  private presetSource: PlaybackSource | undefined
 
   private readonly deps: EngineDeps
 
@@ -93,7 +128,10 @@ export class PlayerEngine {
       return () => video.removeEventListener(type, handler)
     }
     const offs = [
-      on('timeupdate', () => this.set({ position: video.currentTime })),
+      on('timeupdate', () => {
+        this.set({ position: video.currentTime })
+        this.onTime(video.currentTime)
+      }),
       on('durationchange', () => {
         if (Number.isFinite(video.duration)) this.set({ duration: video.duration })
       }),
@@ -106,6 +144,7 @@ export class PlayerEngine {
         if (this.state.status === 'playing') {
           this.set({ status: 'paused' })
           this.reportProgress()
+          this.pauseCountdown()
         }
       }),
       on('seeked', () => this.reportProgress()),
@@ -140,6 +179,8 @@ export class PlayerEngine {
 
   dispatch = (command: PlayerCommand): void => {
     const video = this.video
+    // Any command is user (or remote) input, which resets the "Still watching?" counter.
+    this.autoplayStreak = 0
     switch (command.type) {
       case 'play':
         void this.play(command.itemId, command.startAt ?? 'auto')
@@ -148,7 +189,7 @@ export class PlayerEngine {
         void this.resolveResume(command.resume)
         return
       case 'togglePause':
-        if (!video || !this.state.source) return
+        if (!video || !this.state.source || this.state.limitReached) return
         if (video.paused) void video.play().catch(warn('play'))
         else video.pause()
         return
@@ -156,13 +197,19 @@ export class PlayerEngine {
         video?.pause()
         return
       case 'unpause':
-        if (video && this.state.source) void video.play().catch(warn('play'))
+        if (video && this.state.source && !this.state.limitReached) void video.play().catch(warn('play'))
         return
       case 'seek':
         if (video && this.state.source) video.currentTime = this.clampTime(command.seconds)
         return
       case 'seekBy':
         if (video && this.state.source) video.currentTime = this.clampTime(video.currentTime + command.seconds)
+        return
+      case 'skipBack':
+        this.dispatch({ type: 'seekBy', seconds: -this.deps.skipSeconds(this.state.item).back })
+        return
+      case 'skipForward':
+        this.dispatch({ type: 'seekBy', seconds: this.deps.skipSeconds(this.state.item).forward })
         return
       case 'next':
         if (this.state.nextItemId) void this.play(this.state.nextItemId, 'auto')
@@ -202,6 +249,130 @@ export class PlayerEngine {
       case 'resetSubtitleOffset':
         this.set({ subtitleOffset: 0 })
         return
+      case 'skipSegment':
+        this.skipSegment()
+        return
+      case 'cancelUpNext':
+        this.upNextDismissed = true
+        window.clearTimeout(this.upNextTimer)
+        this.set({ upNext: undefined })
+        return
+      case 'confirmStillWatching':
+        this.set({ stillWatching: false })
+        if (this.state.nextItemId) void this.play(this.state.nextItemId, 'auto')
+        return
+    }
+  }
+
+  // --- segments, "Up next", autoplay ---
+
+  private onTime(time: number) {
+    const { source, segments, duration, nextItemId, upNext, activeSegment } = this.state
+    if (!source || this.state.status === 'loading') return
+    const settings = this.deps.autoplay()
+
+    const segment = segmentAt(segments, time)
+    const mode = segment ? (segment.type === 'intro' || segment.type === 'recap' ? settings.skipIntro : settings.skipOutro) : 'off'
+    if (segment && mode === 'auto' && !this.handledSegments.has(segment)) {
+      this.handledSegments.add(segment)
+      this.jumpPast(segment)
+      return
+    }
+    const buttonSegment = segment && mode === 'button' && !this.handledSegments.has(segment) ? segment : undefined
+    if (buttonSegment !== activeSegment) this.set({ activeSegment: buttonSegment })
+
+    if (!nextItemId || duration <= 0 || this.upNextDismissed) return
+    const showAt = upNextTime(segments, duration, settings.countdownSeconds)
+    if (time >= showAt && !upNext) this.showUpNext(nextItemId, settings)
+    else if (time < showAt - 1 && upNext) {
+      // Seeked back before the credits: hide again (it reappears later).
+      window.clearTimeout(this.upNextTimer)
+      this.set({ upNext: undefined })
+    }
+  }
+
+  /** Seeks past a segment; skipping credits that run to the end goes straight to the next episode. */
+  private jumpPast(segment: Segment) {
+    const { duration, nextItemId } = this.state
+    if (segment.end >= duration - 1 && nextItemId && this.deps.autoplay().enabled && !this.upNextDismissed) {
+      void this.autoAdvance()
+      return
+    }
+    if (this.video) this.video.currentTime = this.clampTime(segment.end)
+  }
+
+  private skipSegment() {
+    const segment = this.state.activeSegment
+    if (!segment) return
+    this.handledSegments.add(segment)
+    this.set({ activeSegment: undefined })
+    if (segment.end >= this.state.duration - 1 && this.state.nextItemId) {
+      void this.play(this.state.nextItemId, 'auto')
+      return
+    }
+    if (this.video) this.video.currentTime = this.clampTime(segment.end)
+  }
+
+  private showUpNext(itemId: string, settings: AutoplaySettings) {
+    const counting = settings.enabled && this.state.status === 'playing'
+    const deadline = counting ? Date.now() + settings.countdownSeconds * 1000 : null
+    this.set({ upNext: { itemId, deadline, item: this.prefetched?.itemId === itemId ? this.prefetched.loaded.item : undefined } })
+    window.clearTimeout(this.upNextTimer)
+    if (deadline !== null) this.upNextTimer = window.setTimeout(() => void this.autoAdvance(), deadline - Date.now())
+    void this.prefetch(itemId)
+  }
+
+  private pauseCountdown() {
+    const upNext = this.state.upNext
+    if (!upNext || upNext.deadline === null) return
+    window.clearTimeout(this.upNextTimer)
+    this.set({ upNext: { ...upNext, deadline: null } })
+  }
+
+  /** Countdown finished or the episode ended: start the next one, or ask "Still watching?". */
+  private async autoAdvance() {
+    window.clearTimeout(this.upNextTimer)
+    const next = this.state.nextItemId
+    if (!next || this.upNextDismissed) return
+    const { stillWatchingAfter } = this.deps.autoplay()
+    if (stillWatchingAfter > 0 && this.autoplayStreak >= stillWatchingAfter) {
+      const upNext = this.state.upNext
+      this.set({ stillWatching: true, upNext: upNext ? { ...upNext, deadline: null } : undefined })
+      return
+    }
+    const blocked = this.deps.playbackBlock()
+    if (blocked) {
+      this.set({ limitReached: blocked, upNext: undefined })
+      return
+    }
+    const streak = this.autoplayStreak + 1
+    await this.play(next, 'auto')
+    this.autoplayStreak = streak
+  }
+
+  /** Loads the next episode's item, tracks and PlaybackInfo ahead of time. */
+  private async prefetch(itemId: string) {
+    if (this.prefetched?.itemId === itemId && Date.now() - this.prefetched.at < PREFETCH_MAX_AGE_MS) return
+    try {
+      const loaded = await this.deps.loadItem(itemId)
+      const choice = await this.deps.resolveTracks(loaded.item, loaded.tracks)
+      const entry: Prefetched = { itemId, loaded, choice, at: Date.now() }
+      this.prefetched = entry
+      const upNext = this.state.upNext
+      if (upNext?.itemId === itemId) this.set({ upNext: { ...upNext, item: loaded.item } })
+      entry.source = await this.deps.getSource(itemId, this.sourceRequest(loaded.item, loaded.tracks, choice))
+    } catch (error) {
+      warn('prefetching the next episode')(error)
+    }
+  }
+
+  private sourceRequest(item: NowPlaying, tracks: MediaTracks | undefined, choice: TrackChoice): SourceRequest {
+    const audioIndex = choice.audioIndex
+    return {
+      ...choice,
+      mediaSourceId: tracks?.mediaSourceId ?? item.id,
+      // <video> can only play a file's default audio track; any other needs a server remux.
+      allowDirectPlay: !tracks || audioIndex === undefined || audioIndex === browserDefaultAudio(tracks),
     }
   }
 
@@ -235,9 +406,28 @@ export class PlayerEngine {
 
   // --- playback flow ---
 
+  /** A soft limit was reached during playback (e.g. the daily budget): pause and explain. */
+  enforceLimit(reason: string) {
+    if (this.state.status === 'idle' || this.state.limitReached) return
+    this.video?.pause()
+    window.clearTimeout(this.upNextTimer)
+    this.set({ limitReached: reason, upNext: undefined })
+  }
+
   private async play(itemId: string, startAt: StartAt) {
+    const blocked = this.deps.playbackBlock()
+    if (blocked) {
+      await this.stop()
+      this.set({ status: 'error', limitReached: blocked, view: 'full' })
+      return
+    }
     const token = ++this.loadToken
     this.pendingResume = null
+    const previousSeries = this.state.item?.seriesId
+    const previousOffset = this.state.subtitleOffset
+    window.clearTimeout(this.upNextTimer)
+    this.handledSegments = new Set()
+    this.upNextDismissed = false
     await this.teardown()
     this.set({
       status: 'loading',
@@ -253,16 +443,36 @@ export class PlayerEngine {
       tracks: undefined,
       subtitleIndex: null,
       subtitleOffset: 0,
+      chapters: [],
+      segments: [],
+      activeSegment: undefined,
+      upNext: undefined,
+      stillWatching: false,
+      limitReached: undefined,
     })
     try {
-      const { item, resumeSeconds, tracks } = await this.deps.loadItem(itemId)
+      const fresh = this.prefetched?.itemId === itemId && Date.now() - this.prefetched.at < PREFETCH_MAX_AGE_MS
+      const prefetched = fresh ? this.prefetched : null
+      this.prefetched = null
+      const { item, resumeSeconds, tracks, chapters } = prefetched?.loaded ?? (await this.deps.loadItem(itemId))
       if (token !== this.loadToken) return
-      this.choice = await this.deps.resolveTracks(item, tracks).catch((error: unknown) => {
-        warn('track selection')(error)
-        return { audioIndex: tracks.defaultAudioIndex, subtitleIndex: tracks.defaultSubtitleIndex ?? null }
-      })
+      this.choice =
+        prefetched?.choice ??
+        (await this.deps.resolveTracks(item, tracks).catch((error: unknown) => {
+          warn('track selection')(error)
+          return { audioIndex: tracks.defaultAudioIndex, subtitleIndex: tracks.defaultSubtitleIndex ?? null }
+        }))
       if (token !== this.loadToken) return
-      this.set({ item, tracks, subtitleIndex: this.choice.subtitleIndex, duration: item.durationSeconds ?? 0 })
+      this.set({ item, tracks, chapters, subtitleIndex: this.choice.subtitleIndex, duration: item.durationSeconds ?? 0 })
+      // A subtitle delay usually fits a whole release, so it carries over within the series.
+      if (previousSeries && previousSeries === item.seriesId && previousOffset !== 0) this.set({ subtitleOffset: previousOffset })
+      void this.deps
+        .getSegments(item, chapters)
+        .then((segments) => {
+          if (token === this.loadToken) this.set({ segments })
+        })
+        .catch(warn('loading segments'))
+      this.presetSource = prefetched?.source
 
       let start: number | null
       if (typeof startAt === 'number') start = startAt
@@ -296,14 +506,9 @@ export class PlayerEngine {
   }
 
   private async startSource(token: number, item: NowPlaying, startSeconds: number) {
-    const tracks = this.state.tracks
-    const audioIndex = this.choice.audioIndex
-    const source = await this.deps.getSource(item.id, {
-      ...this.choice,
-      mediaSourceId: tracks?.mediaSourceId ?? item.id,
-      // <video> can only play a file's default audio track; any other needs a server remux.
-      allowDirectPlay: !tracks || audioIndex === undefined || audioIndex === browserDefaultAudio(tracks),
-    })
+    const preset = this.presetSource
+    this.presetSource = undefined
+    const source = preset ?? (await this.deps.getSource(item.id, this.sourceRequest(item, this.state.tracks, this.choice)))
     if (token !== this.loadToken) return
     const video = this.video
     if (!video) throw new Error('Player is not ready.')
@@ -376,15 +581,18 @@ export class PlayerEngine {
   }
 
   private async onEnded() {
-    const { item } = this.state
+    const { item, nextItemId } = this.state
     this.set({ status: 'ended' })
     await this.reportStopped()
     if (item) this.deps.onStopped?.(item)
+    if (nextItemId && this.deps.autoplay().enabled && !this.upNextDismissed && !this.state.stillWatching) void this.autoAdvance()
   }
 
   private async stop() {
     this.loadToken++
     this.pendingResume = null
+    window.clearTimeout(this.upNextTimer)
+    this.prefetched = null
     const { item } = this.state
     const wasStarted = this.started
     if (document.fullscreenElement) await document.exitFullscreen().catch(warn('exit fullscreen'))
@@ -457,8 +665,8 @@ export class PlayerEngine {
     handle('pause', { type: 'pause' })
     handle('stop', { type: 'stop' })
     handle('nexttrack', { type: 'next' })
-    handle('seekbackward', (d) => ({ type: 'seekBy', seconds: -(d.seekOffset ?? 10) }))
-    handle('seekforward', (d) => ({ type: 'seekBy', seconds: d.seekOffset ?? 10 }))
+    handle('seekbackward', (d) => (d.seekOffset ? { type: 'seekBy', seconds: -d.seekOffset } : { type: 'skipBack' }))
+    handle('seekforward', (d) => (d.seekOffset ? { type: 'seekBy', seconds: d.seekOffset } : { type: 'skipForward' }))
     handle('seekto', (d) => ({ type: 'seek', seconds: d.seekTime ?? 0 }))
   }
 

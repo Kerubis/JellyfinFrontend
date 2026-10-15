@@ -7,7 +7,7 @@ import {
   LocationType,
   SortOrder,
 } from '@jellyfin/sdk/lib/generated-client/models'
-import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api'
+import { getLibraryApi, getUserViewApi } from '@jellyfin/sdk/lib/utils/api'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type { Server, SignedInAccount } from '@/domain/auth'
@@ -49,6 +49,7 @@ async function fetchSeriesCatalog(server: Server, account: SignedInAccount): Pro
     userId: account.userId,
     includeItemTypes: [BaseItemKind.Series],
     recursive: true,
+    fields: [ItemFields.ChildCount],
     enableUserData: false,
     enableTotalRecordCount: false,
     ...CARD_IMAGES,
@@ -208,12 +209,22 @@ async function fetchItems(
   const { data } = await libraryApi(server, account).getItems({
     userId: account.userId,
     recursive: true,
-    fields: [ItemFields.DateCreated],
+    fields: [ItemFields.DateCreated, ItemFields.ChildCount],
     enableTotalRecordCount: false,
     ...CARD_IMAGES,
     ...params,
   })
   return (data.Items ?? []).map((dto) => toMediaItem(server, dto))
+}
+
+const VIDEO_COLLECTIONS = new Set(['tvshows', 'movies', 'homevideos', 'musicvideos'])
+
+/** The user's video libraries (shows, movies, home videos; mixed libraries have no collection type). */
+async function videoLibraryIds(server: Server, account: SignedInAccount): Promise<string[]> {
+  const { data } = await getUserViewApi(apiFor(server.url, account.accessToken)).getUserViews({ userId: account.userId })
+  return (data.Items ?? [])
+    .filter((v) => v.Id && (!v.CollectionType || VIDEO_COLLECTIONS.has(v.CollectionType)))
+    .map((v) => v.Id ?? '')
 }
 
 async function fetchRecentlyAdded(
@@ -223,7 +234,9 @@ async function fetchRecentlyAdded(
   limit: number,
 ): Promise<MediaItem[]> {
   const api = libraryApi(server, account)
-  const parents = libraryIds.length > 0 ? libraryIds : [undefined]
+  // Verified on 12.2: /Items/Latest without parentId leaves out whole libraries (no movies at all),
+  // so every video library is asked separately and the results are merged.
+  const parents = libraryIds.length > 0 ? libraryIds : await videoLibraryIds(server, account)
   const lists = await Promise.all(
     parents.map(async (parentId) => {
       // Latest groups new episodes of one series into a single entry.
@@ -232,7 +245,7 @@ async function fetchRecentlyAdded(
         parentId,
         limit,
         groupItems: true,
-        fields: [ItemFields.DateCreated],
+        fields: [ItemFields.DateCreated, ItemFields.DateLastMediaAdded, ItemFields.ChildCount],
         ...CARD_IMAGES,
       })
       return data.map((dto) => toMediaItem(server, dto))
@@ -240,7 +253,7 @@ async function fetchRecentlyAdded(
   )
   return lists
     .flat()
-    .sort((a, b) => (b.dateCreated ?? '').localeCompare(a.dateCreated ?? ''))
+    .sort((a, b) => (b.addedAt ?? '').localeCompare(a.addedAt ?? ''))
     .slice(0, limit)
 }
 

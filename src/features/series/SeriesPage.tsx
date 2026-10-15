@@ -1,16 +1,21 @@
-import { useParams, useSearchParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/errors'
 import { usePref } from '@/api/prefs-context'
-import { useSeasonEpisodes, useSeasons, useSeriesDetails, useSeriesWatchState, useSetPlayed } from '@/api/queries/series'
+import { useEpisode, useSeasonEpisodes, useSeasons, useSeriesDetails, useSeriesWatchState, useSetPlayed } from '@/api/queries/series'
 import { sortSeasons } from '@/domain/series'
+import { seasonPath } from '@/features/home/links'
 import { usePlay } from '@/features/player/player-context'
 import { EpisodeList } from './EpisodeList'
+import { EpisodePanel } from './EpisodePanel'
 import { SeasonGrid } from './SeasonGrid'
 import { SeriesHeader } from './SeriesHeader'
 
 export function SeriesPage() {
-  const { seriesId = '' } = useParams()
+  const { seriesId = '', episodeId } = useParams()
   const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  // Episode view: the right column shows that episode instead of the episode list.
+  const openEpisode = useEpisode(episodeId ?? '', !!episodeId)
   const { showSpoilers } = usePref('ui').value
   const details = useSeriesDetails(seriesId)
   const seasons = useSeasons(seriesId)
@@ -20,8 +25,11 @@ export function SeriesPage() {
 
   const sorted = sortSeasons(seasons.data ?? [])
   // Selected season lives in the URL (back/forward keeps it); default: the season of the next episode.
+  const episodeSeason = openEpisode.data?.episode
   const selected =
+    (episodeId && episodeSeason ? sorted.find((s) => s.number === episodeSeason.seasonNumber) : undefined) ??
     sorted.find((s) => s.id === params.get('season')) ??
+    sorted.find((s) => params.get('sn') !== null && s.number === Number(params.get('sn'))) ??
     sorted.find((s) => s.number === watch.next?.seasonNumber) ??
     sorted[0]
   const episodes = useSeasonEpisodes(seriesId, selected?.id)
@@ -47,7 +55,7 @@ export function SeriesPage() {
           selectedId={selected?.id}
           bySeason={watch.bySeason}
           fallbackPosterUrl={details.data.posterUrl}
-          onSelect={(id) => setParams({ season: id }, { replace: true })}
+          onSelect={(id) => (episodeId ? navigate(seasonPath(seriesId, { id })) : setParams({ season: id }, { replace: true }))}
           onSetPlayed={(season, played) => {
             const state = watch.bySeason.get(season.number)
             const episodes = [...(state?.played ?? []), ...(state?.unplayed ?? [])]
@@ -57,22 +65,28 @@ export function SeriesPage() {
         />
       </aside>
 
-      <section className="flex min-w-0 flex-col gap-2">
-        {selected && (
-          <h2 className="text-sm font-semibold text-neutral-300">
-            {selected.number === 0 ? 'Specials' : selected.name}
-            <span className="ml-2 text-xs font-normal text-neutral-500">{seasonEpisodes.length} episodes</span>
-          </h2>
-        )}
+      {episodeId ? (
+        <section className="min-w-0">
+          <EpisodePanel episodeId={episodeId} />
+        </section>
+      ) : (
+        <section className="flex min-w-0 flex-col gap-2">
+          {selected && (
+            <h2 className="text-sm font-semibold text-neutral-300">
+              {selected.number === 0 ? 'Specials' : selected.name}
+              <span className="ml-2 text-xs font-normal text-neutral-500">{seasonEpisodes.length} episodes</span>
+            </h2>
+          )}
 
-        {episodes.isPending && selected ? (
-          <p className="text-sm text-neutral-500">Loading episodes…</p>
-        ) : episodes.isError ? (
-          <p className="text-sm text-red-400">{errorMessage(episodes.error)}</p>
-        ) : (
-          <EpisodeList episodes={seasonEpisodes} playedIds={watch.playedIds} nextId={watch.next?.id} showSpoilers={showSpoilers} onPlay={(id) => play(id)} />
-        )}
-      </section>
+          {episodes.isPending && selected ? (
+            <p className="text-sm text-neutral-500">Loading episodes…</p>
+          ) : episodes.isError ? (
+            <p className="text-sm text-red-400">{errorMessage(episodes.error)}</p>
+          ) : (
+            <EpisodeList episodes={seasonEpisodes} playedIds={watch.playedIds} nextId={watch.next?.id} showSpoilers={showSpoilers} onPlay={(id) => play(id)} />
+          )}
+        </section>
+      )}
     </div>
   )
 }

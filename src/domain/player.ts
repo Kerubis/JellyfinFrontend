@@ -1,4 +1,5 @@
 import { episodeLabel } from './media'
+import type { Chapter, Segment } from './segments'
 import type { MediaTracks, TrackChoice } from './tracks'
 
 // Player model. Every way of controlling playback (UI, keyboard, media keys, later Home Assistant via
@@ -21,7 +22,16 @@ export type NowPlaying = {
   libraryId?: string
 }
 
-export type TextTrack = { index: number; label: string; language?: string; url: string; isDefault: boolean }
+export type TextTrack = {
+  index: number
+  label: string
+  language?: string
+  /** WebVTT conversion (our overlay, picture-in-picture). */
+  url: string
+  /** Original ASS/SSA file, rendered with full styling by JASSUB. */
+  assUrl?: string
+  isDefault: boolean
+}
 
 /** Result of the server's PlaybackInfo decision. */
 export type PlaybackSource = {
@@ -37,8 +47,10 @@ export type PlaybackSource = {
   subtitleStreamIndex?: number
   /** The requested subtitle is an image format and therefore burned in by the server. */
   burnedIn: boolean
-  /** Text subtitles as WebVTT (ASS loses its styling here until M7). */
+  /** Text subtitles (WebVTT for all of them, plus the original file for ASS/SSA). */
   textTracks: TextTrack[]
+  /** Fonts embedded in the file (MKV attachments), for ASS rendering. */
+  fontUrls: string[]
 }
 
 /** How to request a source: which media source and tracks, and whether direct play is allowed. */
@@ -79,6 +91,18 @@ export type PlayerState = {
   subtitleIndex: number | null
   /** Subtitle delay in seconds (positive = later). */
   subtitleOffset: number
+  /** Chapters of the current item (seconds). */
+  chapters: Chapter[]
+  /** Intro / recap / outro / preview of the current item. */
+  segments: Segment[]
+  /** Segment the playhead is in when its skip mode is "button" (shows a skip button). */
+  activeSegment?: Segment
+  /** "Up next" card: the next episode, with a countdown deadline (ms timestamp) or null when not counting down. */
+  upNext?: { itemId: string; item?: NowPlaying; deadline: number | null }
+  /** Autoplay paused to ask "Still watching?". */
+  stillWatching: boolean
+  /** A soft limit (bedtime, daily budget) stopped playback; the friendly message to show. */
+  limitReached?: string
 }
 
 export type StartAt = 'auto' | 'resume' | 'beginning' | number
@@ -91,6 +115,9 @@ export type PlayerCommand =
   | { type: 'unpause' }
   | { type: 'seek'; seconds: number }
   | { type: 'seekBy'; seconds: number }
+  /** Skip by the configured time for the current item's library (buttons, arrow keys, media keys). */
+  | { type: 'skipBack' }
+  | { type: 'skipForward' }
   | { type: 'next' }
   | { type: 'stop' }
   | { type: 'setVolume'; volume: number }
@@ -101,6 +128,9 @@ export type PlayerCommand =
   | { type: 'setSubtitleTrack'; index: number | null }
   | { type: 'adjustSubtitleOffset'; seconds: number }
   | { type: 'resetSubtitleOffset' }
+  | { type: 'skipSegment' }
+  | { type: 'cancelUpNext' }
+  | { type: 'confirmStillWatching' }
 
 export const INITIAL_PLAYER_STATE: PlayerState = {
   status: 'idle',
@@ -113,6 +143,9 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   fullscreen: false,
   subtitleIndex: null,
   subtitleOffset: 0,
+  chapters: [],
+  segments: [],
+  stillWatching: false,
 }
 
 export const TICKS_PER_SECOND = 10_000_000
@@ -143,10 +176,13 @@ export type DevicePlaybackSettings = {
   allowMkvDirectPlay: boolean
   /** Always transcode (debugging / weak clients). */
   forceTranscode: boolean
+  /** Render ASS/SSA with full styling (JASSUB); off = plain text like SRT. */
+  styledAss: boolean
 }
 
 export const DEFAULT_DEVICE_PLAYBACK: DevicePlaybackSettings = {
   maxBitrateMbps: 0,
   allowMkvDirectPlay: true,
   forceTranscode: false,
+  styledAss: true,
 }

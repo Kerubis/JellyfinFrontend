@@ -1,12 +1,18 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useLocation } from 'react-router'
 import { usePref } from '@/api/prefs-context'
 import { Button } from '@/components/Button'
 import { formatTime, type PlayerCommand, type PlayerState } from '@/domain/player'
+import { hasLimits, limitWarning } from '@/domain/safety'
+import { SkipSegmentButton, UpNextCard } from './AutoplayUi'
 import { BottomBar, MiniControls } from './PlayerControls'
 import { usePlayerDispatch, usePlayerEngine, usePlayerState } from './player-context'
 import { SubtitleOverlay } from './SubtitleOverlay'
+import { useDevicePlaybackSettings } from './deviceSettings'
+import { useAssRenderer } from './useAssRenderer'
 import { useIdle } from './useIdle'
+import { usePictureInPicture } from './usePictureInPicture'
+import { useRemotePlayback } from './useRemotePlayback'
 import { usePlayerShortcuts } from './usePlayerShortcuts'
 
 /**
@@ -30,10 +36,22 @@ export function PlayerOverlay() {
     return engine.attach(video, container)
   }, [engine])
 
-  usePlayerShortcuts(state, dispatch)
+  const pip = usePictureInPicture(videoRef)
+  usePlayerShortcuts(state, dispatch, pip.toggle)
   useMinimizeOnNavigation(state, dispatch)
-  const textTrack = useTextTrackModes(state, videoRef)
+  const textTrack = useTextTrackModes(state, videoRef, pip.active)
+  const { styledAss } = useDevicePlaybackSettings()[0]
+  const assUrl = styledAss && textTrack !== null ? state.source?.textTracks.find((t) => t.index === textTrack)?.assUrl : undefined
+  const assActive = useAssRenderer(videoRef, {
+    subUrl: active ? assUrl : undefined,
+    fontUrls: state.source?.fontUrls ?? [],
+    offset: state.subtitleOffset,
+  })
+  const cast = useRemotePlayback(videoRef, state.source?.playSessionId)
   const subtitleStyle = usePref('subtitles').value
+  const playback = usePref('playback').value
+  const limitNotice = useLimitNotice(active)
+  const { showSpoilers } = usePref('ui').value
 
   const containerClass = !active
     ? 'hidden'
@@ -58,7 +76,7 @@ export function PlayerOverlay() {
 
       <SubtitleOverlay
         videoRef={videoRef}
-        trackIndex={active ? textTrack : null}
+        trackIndex={active && !assActive ? textTrack : null}
         sourceKey={state.source?.playSessionId}
         offset={state.subtitleOffset}
         fontSize={full ? subtitleStyle.fontSize : Math.round(subtitleStyle.fontSize * 0.5)}
@@ -69,10 +87,29 @@ export function PlayerOverlay() {
 
       <StatusLayer state={state} dispatch={dispatch} compact={!full} />
 
+      {active && full && limitNotice && !state.limitReached && (
+        <div className="pointer-events-none absolute top-4 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/80 px-4 py-1.5 text-sm text-amber-200 shadow-lg">
+          {limitNotice}
+        </div>
+      )}
+
+      {active && full && (
+        <>
+          <SkipSegmentButton state={state} dispatch={dispatch} raised={!idle} />
+          <UpNextCard
+            state={state}
+            dispatch={dispatch}
+            raised={!idle}
+            showSpoilers={showSpoilers}
+            countdownSeconds={playback.autoplayCountdownSeconds}
+          />
+        </>
+      )}
+
       {active && full && (
         <div className={`pointer-events-none absolute inset-0 flex flex-col justify-end transition-opacity ${idle ? 'opacity-0' : 'opacity-100'}`}>
           <div className="pointer-events-auto">
-            <BottomBar state={state} dispatch={dispatch} />
+            <BottomBar state={state} dispatch={dispatch} cast={cast} pip={pip} />
           </div>
         </div>
       )}
@@ -86,7 +123,30 @@ function StatusLayer({ state, dispatch, compact }: { state: PlayerState; dispatc
   const box = 'pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 p-5 text-center'
   let content: ReactNode = null
 
-  if (state.resumePrompt) {
+  if (state.limitReached) {
+    content = (
+      <div className={box}>
+        <p className="text-base font-semibold">That's it for now</p>
+        <p className="max-w-sm text-sm text-neutral-300">{state.limitReached}</p>
+        <Button variant="primary" onClick={() => dispatch({ type: 'stop' })} autoFocus>
+          OK
+        </Button>
+      </div>
+    )
+  } else if (state.stillWatching) {
+    content = (
+      <div className={box}>
+        <p className="text-base font-semibold">Still watching?</p>
+        <p className="text-xs text-neutral-400">Autoplay paused after several episodes without any input.</p>
+        <div className="flex gap-2">
+          <Button variant="primary" onClick={() => dispatch({ type: 'confirmStillWatching' })} autoFocus>
+            Continue
+          </Button>
+          <Button onClick={() => dispatch({ type: 'stop' })}>Stop</Button>
+        </div>
+      </div>
+    )
+  } else if (state.resumePrompt) {
     content = (
       <div className={box}>
         <p className="text-sm">Resume where you stopped?</p>
@@ -131,6 +191,20 @@ function StatusLayer({ state, dispatch, compact }: { state: PlayerState; dispatc
   )
 }
 
+/** Heads-up before a soft limit (bedtime / daily budget), re-checked every 30 s while playing. */
+function useLimitNotice(active: boolean): string | null {
+  const safety = usePref('safety').value
+  const usage = usePref('safetyUsage').value
+  const [now, setNow] = useState(() => new Date())
+  const watched = active && hasLimits(safety)
+  useEffect(() => {
+    if (!watched) return
+    const timer = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [watched])
+  return watched ? limitWarning(safety, usage, now) : null
+}
+
 /** Browsing elsewhere while something plays shrinks the player to the mini player. */
 function useMinimizeOnNavigation(state: PlayerState, dispatch: (c: PlayerCommand) => void) {
   const { pathname } = useLocation()
@@ -143,8 +217,11 @@ function useMinimizeOnNavigation(state: PlayerState, dispatch: (c: PlayerCommand
   }, [pathname, shouldMinimize, dispatch])
 }
 
-/** Only the selected text track is loaded ("hidden": parsed and timed by the browser, drawn by us). */
-function useTextTrackModes(state: PlayerState, videoRef: RefObject<HTMLVideoElement | null>) {
+/**
+ * Only the selected text track is loaded: "hidden" (parsed and timed by the browser, drawn by our
+ * overlay), or "showing" in picture-in-picture, where only the browser's own rendering is visible.
+ */
+function useTextTrackModes(state: PlayerState, videoRef: RefObject<HTMLVideoElement | null>, nativeRendering: boolean) {
   const selected = state.source?.burnedIn ? null : state.subtitleIndex
   const source = state.source
   useEffect(() => {
@@ -152,12 +229,13 @@ function useTextTrackModes(state: PlayerState, videoRef: RefObject<HTMLVideoElem
     if (!video) return
     const apply = () => {
       video.querySelectorAll('track').forEach((el) => {
-        el.track.mode = selected !== null && Number(el.dataset.index) === selected ? 'hidden' : 'disabled'
+        const chosen = selected !== null && Number(el.dataset.index) === selected
+        el.track.mode = chosen ? (nativeRendering ? 'showing' : 'hidden') : 'disabled'
       })
     }
     apply()
     video.textTracks.addEventListener('addtrack', apply)
     return () => video.textTracks.removeEventListener('addtrack', apply)
-  }, [selected, source, videoRef])
-  return selected
+  }, [selected, source, videoRef, nativeRendering])
+  return nativeRendering ? null : selected
 }

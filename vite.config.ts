@@ -12,6 +12,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // JASSUB loads its worker, wasm and default font via new URL(..., import.meta.url);
+    // pre-bundling would move the module and break those paths. Its CommonJS dependencies
+    // still need pre-bundling (ESM conversion), otherwise `import x from 'throughput'` fails in dev.
+    optimizeDeps: {
+      exclude: ['jassub'],
+      include: ['jassub > throughput', 'jassub > rvfc-polyfill'],
+    },
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
