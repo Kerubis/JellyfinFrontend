@@ -30,7 +30,7 @@ export function ProfileGrid({ server, onPickUser }: { server: Server; onPickUser
           <button
             type="button"
             onClick={() => (tile.signedIn ? switchAccount(tile.userId) : onPickUser(tile.name))}
-            className="flex w-full flex-col items-center gap-1.5 rounded p-2 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-violet-400"
+            className="flex w-full flex-col items-center gap-1.5 rounded p-2 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-accent-400"
           >
             <Avatar name={tile.name} url={tile.avatarUrl} size="lg" />
             <span className="w-full truncate text-xs">{tile.name}</span>

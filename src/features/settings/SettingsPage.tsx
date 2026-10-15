@@ -1,14 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { defaultDeviceName, getDeviceName, setDeviceName } from '@/api/client'
+import { useRefreshPrefsOnMount } from '@/api/prefs-context'
 import { useSession, useSignedIn } from '@/api/session-context'
 import { Button } from '@/components/Button'
 import { TextField } from '@/components/TextField'
+import { HiddenSection } from './HiddenSection'
+import { LanguageSection } from './LanguageSection'
+import { PlaybackDeviceSection } from './PlaybackDeviceSection'
+import { PrefsDiagnostics } from './PrefsDiagnostics'
+import { DisplayPrefsSection, PlaybackPrefsSection, SubtitlePrefsSection } from './ProfilePrefsSection'
 
 export function SettingsPage() {
   const { server, account } = useSignedIn()
   const { forgetServer, signOut } = useSession()
   const [name, setName] = useState(getDeviceName)
   const [saved, setSaved] = useState(false)
+  useRefreshPrefsOnMount()
 
   function saveDeviceName(event: FormEvent) {
     event.preventDefault()
@@ -19,6 +26,13 @@ export function SettingsPage() {
 
   return (
     <div className="flex max-w-lg flex-col gap-6">
+      <PlaybackPrefsSection />
+      <PlaybackDeviceSection />
+      <SubtitlePrefsSection />
+      <LanguageSection />
+      <DisplayPrefsSection />
+      <HiddenSection />
+
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">This device</h2>
         <form onSubmit={saveDeviceName} className="flex items-end gap-2">
@@ -58,6 +72,7 @@ export function SettingsPage() {
           </Button>
         </div>
       </section>
+      {import.meta.env.DEV && <PrefsDiagnostics />}
     </div>
   )
 }

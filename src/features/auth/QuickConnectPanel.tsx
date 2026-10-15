@@ -17,7 +17,7 @@ export function QuickConnectPanel({ server }: { server: Server }) {
           <p className="text-sm text-neutral-400">
             In another Jellyfin app where you're signed in, open <em>Quick Connect</em> and enter:
           </p>
-          <p className="text-center font-mono text-3xl tracking-[0.3em] text-violet-300">{qc.code}</p>
+          <p className="text-center font-mono text-3xl tracking-[0.3em] text-accent-300">{qc.code}</p>
           <p className="text-center text-xs text-neutral-500">Waiting for approval…</p>
           <Button variant="ghost" onClick={qc.cancel}>
             Cancel

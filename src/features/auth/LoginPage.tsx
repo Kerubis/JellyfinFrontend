@@ -37,7 +37,7 @@ export function LoginPage({ server }: { server: Server }) {
       subtitle={
         <>
           {server.name} · Jellyfin {server.version}{' '}
-          <button type="button" onClick={forgetServer} className="text-violet-400 hover:underline">
+          <button type="button" onClick={forgetServer} className="text-accent-400 hover:underline">
             Change server
           </button>
         </>

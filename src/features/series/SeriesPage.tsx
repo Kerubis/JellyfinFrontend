@@ -1,0 +1,78 @@
+import { useParams, useSearchParams } from 'react-router'
+import { errorMessage } from '@/api/errors'
+import { usePref } from '@/api/prefs-context'
+import { useSeasonEpisodes, useSeasons, useSeriesDetails, useSeriesWatchState, useSetPlayed } from '@/api/queries/series'
+import { sortSeasons } from '@/domain/series'
+import { usePlay } from '@/features/player/player-context'
+import { EpisodeList } from './EpisodeList'
+import { SeasonGrid } from './SeasonGrid'
+import { SeriesHeader } from './SeriesHeader'
+
+export function SeriesPage() {
+  const { seriesId = '' } = useParams()
+  const [params, setParams] = useSearchParams()
+  const { showSpoilers } = usePref('ui').value
+  const details = useSeriesDetails(seriesId)
+  const seasons = useSeasons(seriesId)
+  const watch = useSeriesWatchState(seriesId)
+  const setPlayed = useSetPlayed()
+  const play = usePlay()
+
+  const sorted = sortSeasons(seasons.data ?? [])
+  // Selected season lives in the URL (back/forward keeps it); default: the season of the next episode.
+  const selected =
+    sorted.find((s) => s.id === params.get('season')) ??
+    sorted.find((s) => s.number === watch.next?.seasonNumber) ??
+    sorted[0]
+  const episodes = useSeasonEpisodes(seriesId, selected?.id)
+  const seasonEpisodes = episodes.data ?? []
+
+  if (details.isPending) return <p className="text-sm text-neutral-500">Loading…</p>
+  if (details.isError) return <p className="text-sm text-red-400">{errorMessage(details.error)}</p>
+
+  return (
+    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[clamp(24rem,32vw,44rem)_1fr] lg:items-start">
+      {/* Left: series info + seasons; stays in view while the episode list scrolls. */}
+      <aside className="flex flex-col gap-4 lg:sticky lg:top-14 lg:max-h-[calc(100svh-4rem)] lg:overflow-y-auto lg:pr-1">
+        <SeriesHeader
+          series={details.data}
+          playedCount={watch.playedCount}
+          totalCount={watch.totalCount}
+          next={watch.next}
+          playTarget={watch.playTarget}
+          onPlay={(id) => play(id)}
+        />
+        <SeasonGrid
+          seasons={sorted}
+          selectedId={selected?.id}
+          bySeason={watch.bySeason}
+          fallbackPosterUrl={details.data.posterUrl}
+          onSelect={(id) => setParams({ season: id }, { replace: true })}
+          onSetPlayed={(season, played) => {
+            const state = watch.bySeason.get(season.number)
+            const episodes = [...(state?.played ?? []), ...(state?.unplayed ?? [])]
+            setPlayed.mutate({ itemId: season.id, played, episodes })
+          }}
+          onPlay={(id) => play(id)}
+        />
+      </aside>
+
+      <section className="flex min-w-0 flex-col gap-2">
+        {selected && (
+          <h2 className="text-sm font-semibold text-neutral-300">
+            {selected.number === 0 ? 'Specials' : selected.name}
+            <span className="ml-2 text-xs font-normal text-neutral-500">{seasonEpisodes.length} episodes</span>
+          </h2>
+        )}
+
+        {episodes.isPending && selected ? (
+          <p className="text-sm text-neutral-500">Loading episodes…</p>
+        ) : episodes.isError ? (
+          <p className="text-sm text-red-400">{errorMessage(episodes.error)}</p>
+        ) : (
+          <EpisodeList episodes={seasonEpisodes} playedIds={watch.playedIds} nextId={watch.next?.id} showSpoilers={showSpoilers} onPlay={(id) => play(id)} />
+        )}
+      </section>
+    </div>
+  )
+}

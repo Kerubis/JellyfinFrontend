@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Accent = Jellyfin blue (#00a4dc). 600 is the brand color (buttons, badges); lighter steps for hover, text and focus rings. */
+@theme {
+  --color-accent-300: #7fd3f1;
+  --color-accent-400: #4fc4ec;
+  --color-accent-500: #22b4e6;
+  --color-accent-600: #00a4dc;
+  --color-accent-700: #0086b5;
+}
+
 :root {
   color-scheme: dark;
 }

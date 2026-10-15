@@ -1,10 +1,11 @@
 import { useRef } from 'react'
+import { Link } from 'react-router'
 import { useSession, useSignedIn } from '@/api/session-context'
 import { Avatar } from '@/components/Avatar'
 
 const ITEM = 'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-800'
 
-/** Header menu: quick profile switch, add profile, sign out. */
+/** Header menu: settings, quick profile switch, add profile, sign out. */
 export function ProfileMenu() {
   const { account } = useSignedIn()
   const { accounts, switchAccount, signOut } = useSession()
@@ -23,6 +24,10 @@ export function ProfileMenu() {
         <span className="text-sm">{account.name}</span>
       </summary>
       <div className="absolute right-0 z-20 mt-1 w-52 rounded border border-neutral-800 bg-neutral-900 p-1 shadow-lg">
+        <Link to="/settings" className={ITEM} onClick={() => menuRef.current?.removeAttribute('open')}>
+          Settings
+        </Link>
+        <hr className="my-1 border-neutral-800" />
         {others.map((a) => (
           <button key={a.userId} type="button" className={ITEM} onClick={() => run(() => switchAccount(a.userId))}>
             <Avatar name={a.name} url={a.avatarUrl} />

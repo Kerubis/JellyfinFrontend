@@ -6,7 +6,7 @@ export function Avatar({ name, url, size = 'sm' }: Props) {
   return (
     <span
       aria-hidden
-      className={`${box} flex shrink-0 items-center justify-center rounded-full bg-violet-700 font-semibold text-white`}
+      className={`${box} flex shrink-0 items-center justify-center rounded-full bg-accent-700 font-semibold text-white`}
     >
       {name.slice(0, 1).toUpperCase()}
     </span>
