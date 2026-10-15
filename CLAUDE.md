@@ -93,5 +93,5 @@ The detailed, up-to-date milestone list and task tracker is in [PLAN.md](PLAN.md
 - Start with milestone 1 and keep changes small and reviewable.
 - Before implementing a feature, briefly propose the approach and ask when a decision is unclear.
 - Verify Jellyfin API behavior against the swagger docs and the real server rather than assuming.
-- Jellyfin server URL: `TODO`
+- Jellyfin server URL: `http://172.16.100.228:8096` ("Kerubis Jellyfin", version 12.2.0). Dev proxy target is set in `.env.local`.
 - Test user / library notes: `TODO`

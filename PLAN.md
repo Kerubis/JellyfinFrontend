@@ -21,6 +21,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(later)` designed now,
 | D8 | All player actions go through **one command dispatcher** (UI, keyboard, remote/HA all call it) | Lets us add HA control later without touching the player again |
 | D9 | Intro/outro skipping uses the **MediaSegments API** | Server-native since 10.10. Verified: SDK `MediaSegmentApi` |
 | D10 | License: GPL-3.0 (from the repo's initial commit) | Already chosen |
+| D11 | Session state (server, remembered profiles with tokens, active profile) in a `SessionProvider` under `src/api/`; the app shows server setup → login → app based on it, no login route | 401 handling and profile switching are just state changes; a profile whose token is rejected stays listed as "signed out" |
+| D12 | One `deviceId` per browser, shared by all profiles on it | Stable identity for the Jellyfin dashboard / HA. To verify: switching profiles on one device doesn't revoke the other profile's token |
 
 ---
 
@@ -51,6 +53,7 @@ src/
   domain/         # Series, Episode, PlaybackSource, Prefs, DashboardSection, ... (no SDK imports)
   features/
     home/         # dashboard + sections (Currently Watching etc.)
+    auth/         # server setup, login, Quick Connect, profile picker/menu
     library/      # browse, filter, search
     series/       # series / season / episode views
     player/       # engine, overlay UI, subtitles, track selection, autoplay
@@ -206,16 +209,18 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Tailwind v4, TanStack Query, React Router, `@jellyfin/sdk`, hls.js installed
 - [x] Folder structure, dev proxy (`JELLYFIN_URL` in `.env.local`)
 - [x] Git repo connected to `github.com/Kerubis/JellyfinFrontend`
-- [ ] Fill in server URL / version / test user in CLAUDE.md
+- [x] Fill in server URL / version / test user in CLAUDE.md (URL + version done, test user open)
 
 ### M1: Auth, data layer, device identity
-- [ ] `api/client.ts`: SDK `Jellyfin` instance, `clientInfo`, `deviceInfo` (persistent `deviceId`, editable device name)
-- [ ] Server URL setup screen (dev: `/jellyfin` proxy, prod: entered URL), `GET /System/Info/Public` check
-- [ ] Login (username/password), token in `localStorage`, logout, 401 → back to login
-- [ ] Profile picker (`/Users/Public`), multiple stored tokens, quick switch
-- [ ] `domain/` first types + mappers: `User`, `Library`, `Series`, `Episode`
-- [ ] First query hook: user libraries (`UserViews`) rendered as a list
-- [ ] `POST /Sessions/Capabilities/Full` on login (needed later for HA)
+- [x] `api/client.ts`: SDK `Jellyfin` instance, `clientInfo`, `deviceInfo` (persistent `deviceId`, editable device name)
+- [x] Server URL setup screen (dev: `/jellyfin` proxy, prod: entered URL), `GET /System/Info/Public` check
+- [x] Login (username/password), token in `localStorage`, logout, 401 → back to login
+- [x] Quick Connect sign-in (enabled on the server; handy for the TV)
+- [x] Profile picker (`/Users/Public` + profiles remembered on the device), multiple stored tokens, quick switch from the header menu
+- [x] `domain/` first types + mappers: `User`, `Library`, `Series`, `Episode`
+- [x] First query hook: user libraries (`UserViews`) rendered as a list
+- [x] `POST /Sessions/Capabilities/Full` on login (playback types only; `SupportsMediaControl` + commands get switched on in M11)
+- [x] Verify in the browser: login, Quick Connect, profile switch, sign out, revoked token → login
 
 ### M2: Profile prefs layer (synced)
 - [ ] `domain/prefs.ts`: typed schema per key + defaults + versioned `migrate()`
@@ -296,7 +301,7 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 
 ## 5. Open questions
 
-- [ ] **Server URL, Jellyfin version** (≥10.10 needed for media segments), test user / libraries → fill into CLAUDE.md
+- [~] **Server URL, Jellyfin version** (≥10.10 needed for media segments), test user / libraries → fill into CLAUDE.md. Done: `http://172.16.100.228:8096`, v12.2.0. Still open: test user / libraries
 - [ ] Does the server have a segment provider (e.g. Intro Skipper)?
 - [ ] **Following**: use Jellyfin favorites as "following", or a separate list in prefs (keeps favorites free for other use)? Proposal: separate list in prefs, with "import favorites" once.
 - [ ] Kids: separate Jellyfin user(s) already, or to be created?
