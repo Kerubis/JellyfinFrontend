@@ -29,6 +29,7 @@ Problems with the stock Jellyfin web UI that this project fixes:
 - **The player is a persistent overlay / mini-player** mounted at the app root, outside the router outlet. Navigating while something plays must not interrupt playback.
 - Server URL and credentials are configurable (no hardcoding). Store the access token in `localStorage`.
 - During development, proxy API calls through the Vite dev server to avoid CORS issues.
+- The production image is opened over **plain HTTP on the LAN** (not a secure context, unlike `localhost` in dev). Don't rely on secure-context-only APIs (`crypto.randomUUID`, `crypto.subtle`, `navigator.clipboard`, wake lock, service workers) without a fallback.
 
 ## Suggested structure
 
