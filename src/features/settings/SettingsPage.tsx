@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Navigate, useSearchParams } from 'react-router'
 import { usePref, useRefreshPrefsOnMount, usePrefsSaveState } from '@/api/prefs-context'
 import { useCurrentUser } from '@/api/queries/users'
+import { appVersion } from '@/api/runtimeConfig'
 import { hasLimits } from '@/domain/safety'
 import { hasHardLimits } from '@/domain/users'
 import { DashboardEditor } from '@/features/home/DashboardEditor'
@@ -81,7 +82,9 @@ export function SettingsPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-5">
       <div className="flex items-baseline justify-between gap-2">
-        <h1 className="text-lg font-semibold">Settings</h1>
+        <h1 className="text-lg font-semibold">
+          Settings <span className="ml-1 text-xs font-normal text-neutral-500">{appVersion}</span>
+        </h1>
         <span className={`text-xs ${saveState === 'error' ? 'text-red-400' : 'text-neutral-500'}`}>{SAVE_LABEL[saveState]}</span>
       </div>
 

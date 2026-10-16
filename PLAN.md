@@ -40,6 +40,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(later)` designed now,
 | D28 | "Recently Added" always queries `/Items/Latest` **per video library** and merges by the newer of `DateCreated` / `DateLastMediaAdded` | Verified on 12.2: without `parentId` the endpoint leaves out whole libraries (no movies even with limit 200). Episodes / seasons of the same show are then grouped into one series card (`groupBySeries`), fetching 2× the limit to make up for it |
 | D29 | **One caption component** (`MediaCaption`) for the two lines under every tile: title, then movie: year · series: years · N seasons · season: Season N · N episodes · episode: S01 E05 (Currently Watching: the next episode). Year links to the item's library filtered by year (library resolved via ancestors on click, cached); season → series page with that season; episode → episode view in its series page | Same text and links everywhere; New Episodes no longer shows the episode range |
 | D30 | Soft limits live in the **kid's own synced prefs** (`safety`, written by an admin; `safetyUsage`, written by the kid's player). Kid-mode sign-out locks the profile picker instead of a PIN | Verified that admins can write other users' prefs; works across devices without our own backend. Soft by design (a kid using the API could change them) |
+| D31 | **Deployment: own Docker image on GHCR, built by GitHub Actions on `v*` tags; Unraid tracks `:latest`** (br0, own IP). Server URL is a runtime env var (`JELLYFIN_URL` → `/config.js`), not baked into the build. Browser talks to Jellyfin directly (CORS `*` on the server, checked 2026-10-16) | Unraid's update check compares the registry digest of the tag, so releases (not every push) show as updates. One image works for any server |
 | D12 | One `deviceId` per browser, shared by all profiles on it | Stable identity for the Jellyfin dashboard / HA. To verify: switching profiles on one device doesn't revoke the other profile's token |
 
 ---
@@ -360,7 +361,8 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 - [x] Trickplay thumbnails in the seek-bar tooltip: manifest from the item (`Trickplay[mediaSourceId][width]`), resolution ≥ 320 px picked, frame cut from the tile sheet (`/Videos/{id}/Trickplay/{width}/{n}.jpg`, token in the URL since it's a CSS background) and shown at 208 px above time + chapter; tooltip clamped inside the bar
 - [ ] Verify trickplay in the browser: needs "Enable trickplay image extraction" on the libraries (off on all three, 2026-10-16) and a run of "Generate Trickplay Images"
 - [ ] Performance pass (image sizes via `fillWidth`/`quality`, query caching), responsive layout
-- [ ] Production build + deployment notes (static hosting / served next to Jellyfin)
+- [x] Docker image for Unraid (D31): multi-stage `Dockerfile` (node build → nginx:alpine), `docker/nginx.conf` (SPA fallback, immutable `/assets`, no-cache entry points, gzip, `/health`), `JELLYFIN_URL` → `/config.js` at container start (app auto-connects, setup form as fallback), GitHub Actions → `ghcr.io/kerubis/jellyfinfrontend` on `v*` tags only (`latest`, `x.y.z`, `x.y`), Unraid template `unraid/jellyfin-frontend.xml` (br0, required server URL), version shown in Settings; README "Docker / Unraid"
+- [ ] First release: push `v0.2.0`, make the GHCR package public, install via the template on Unraid and verify (update flow: new tag → Unraid "Check for updates")
 
 ---
 
