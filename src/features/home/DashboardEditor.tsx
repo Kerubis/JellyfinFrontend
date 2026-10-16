@@ -80,6 +80,11 @@ function SectionRow({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
         <CheckboxField label="Visible" checked={section.visible} onChange={(visible) => onChange({ visible })} />
         <CheckboxField label="Hide on this device" checked={hiddenHere} onChange={onHideHere} />
+        <CheckboxField
+          label="Hide when empty"
+          checked={!!section.options.hideWhenEmpty}
+          onChange={(on) => setOptions({ hideWhenEmpty: on || undefined })}
+        />
         {info.options.includes('limit') && (
           <OptionalNumberField
             key={`limit-${section.options.limit ?? ''}`}

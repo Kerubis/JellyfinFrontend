@@ -103,9 +103,9 @@ export function MediaTile(props: Props) {
             onClick={onPlay}
             title={playLabel ?? 'Play'}
             aria-label={playLabel ?? 'Play'}
-            className="pointer-events-auto rounded-full opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none"
+            className="group/play pointer-events-auto rounded-full opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none"
           >
-            <PlayCircle />
+            <PlayCircle pulse="self" />
           </button>
         </div>
       )}

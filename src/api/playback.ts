@@ -10,6 +10,7 @@ import {
   type DeviceProfile,
   type MediaSourceInfo,
   type PlaybackProgressInfo,
+  type TrickplayInfoDto,
 } from '@jellyfin/sdk/lib/generated-client/models'
 import { getLibraryApi, getMediaInfoApi, getMediaSegmentApi, getSessionApi, getShowApi, getUserApi } from '@jellyfin/sdk/lib/utils/api'
 import type { Server, SignedInAccount } from '@/domain/auth'
@@ -25,6 +26,7 @@ import {
 } from '@/domain/player'
 import { fromChapters, fromServerSegments, type Chapter, type Segment } from '@/domain/segments'
 import { ruleFromJellyfin, type MediaTracks, type PartialRule } from '@/domain/tracks'
+import { pickTrickplayWidth, type Trickplay } from '@/domain/trickplay'
 import { codecList, type BrowserCapabilities } from '@/lib/codecs'
 import { apiFor, itemImageUrl, jellyfin } from './client'
 
@@ -159,10 +161,38 @@ export async function loadPlayableItem(
       posterUrl,
       durationSeconds: data.RunTimeTicks ? data.RunTimeTicks / TICKS_PER_SECOND : undefined,
       libraryId: ancestors.find((a) => a.Type === 'CollectionFolder')?.Id ?? undefined,
+      trickplay: source?.Id ? toTrickplay(server, account, itemId, source.Id, data.Trickplay?.[source.Id]) : undefined,
     },
     resumeSeconds: (data.UserData?.PlaybackPositionTicks ?? 0) / TICKS_PER_SECOND,
     tracks: source ? toMediaTracks(source) : { mediaSourceId: itemId, audio: [], subtitles: [] },
     chapters: (data.Chapters ?? []).map((c) => ({ name: c.Name ?? '', start: (c.StartPositionTicks ?? 0) / TICKS_PER_SECOND })),
+  }
+}
+
+/**
+ * Trickplay manifest of one media source (keyed by frame width) → the resolution we show. Sheets are
+ * loaded as CSS backgrounds, which can't send headers, hence the token in the URL (as for subtitles).
+ */
+function toTrickplay(
+  server: Server,
+  account: SignedInAccount,
+  itemId: string,
+  mediaSourceId: string,
+  manifest: Record<string, TrickplayInfoDto> | null | undefined,
+): Trickplay | undefined {
+  if (!manifest) return undefined
+  const width = pickTrickplayWidth(Object.keys(manifest).map(Number))
+  const info = width === undefined ? undefined : manifest[String(width)]
+  if (!info?.Width || !info.Height || !info.TileWidth || !info.TileHeight || !info.ThumbnailCount || !info.Interval) return undefined
+  const query = new URLSearchParams({ mediaSourceId, api_key: account.accessToken })
+  return {
+    width: info.Width,
+    height: info.Height,
+    columns: info.TileWidth,
+    rows: info.TileHeight,
+    count: info.ThumbnailCount,
+    intervalMs: info.Interval,
+    sheetUrl: (index) => `${server.url}/Videos/${itemId}/Trickplay/${width}/${index}.jpg?${query}`,
   }
 }
 

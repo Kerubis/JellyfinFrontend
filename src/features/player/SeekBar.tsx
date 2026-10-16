@@ -1,5 +1,6 @@
 import { useState, type MouseEvent } from 'react'
 import { formatTime, type PlayerCommand, type PlayerState } from '@/domain/player'
+import { trickplayFrame, type Trickplay } from '@/domain/trickplay'
 
 const SEGMENT_COLOR: Record<string, string> = {
   intro: 'bg-amber-300/45',
@@ -9,7 +10,8 @@ const SEGMENT_COLOR: Record<string, string> = {
 }
 
 /**
- * Seek bar with chapter gaps, intro/outro highlights and a hover tooltip (time + chapter).
+ * Seek bar with chapter gaps, intro/outro highlights and a hover tooltip (preview frame when the server
+ * has trickplay images, time, chapter).
  * The visible track is drawn by us; an invisible native range input on top does the seeking
  * (keyboard and screen readers keep working).
  */
@@ -17,12 +19,13 @@ export function SeekBar({ state, dispatch }: { state: PlayerState; dispatch: (co
   const { position, duration, bufferedUntil, chapters, segments } = state
   const max = duration > 0 ? duration : 1
   const pct = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / max) * 100))}%`
-  const [hover, setHover] = useState<{ x: number; time: number } | null>(null)
+  const [hover, setHover] = useState<{ x: number; width: number; time: number } | null>(null)
+  const trickplay = state.item?.trickplay
 
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    setHover({ x: ratio * rect.width, time: ratio * max })
+    setHover({ x: ratio * rect.width, width: rect.width, time: ratio * max })
   }
   const hoverChapter = hover ? [...chapters].reverse().find((c) => c.start <= hover.time) : undefined
   const boundaries = chapters.filter((c) => c.start > 0.5 && c.start < max - 0.5)
@@ -53,11 +56,15 @@ export function SeekBar({ state, dispatch }: { state: PlayerState; dispatch: (co
       {/* Hover tooltip */}
       {hover && (
         <div
-          className="pointer-events-none absolute bottom-6 -translate-x-1/2 rounded bg-neutral-900/95 px-2 py-1 text-center text-xs whitespace-nowrap shadow-lg"
-          style={{ left: hover.x }}
+          className="pointer-events-none absolute bottom-6 -translate-x-1/2 overflow-hidden rounded bg-neutral-900/95 text-center text-xs whitespace-nowrap shadow-lg"
+          // With a preview the tooltip is wide: keep it inside the bar instead of hanging off the screen edge.
+          style={{ left: trickplay ? clampCenter(hover.x, PREVIEW_WIDTH / 2, hover.width) : hover.x }}
         >
-          <div className="font-semibold tabular-nums">{formatTime(hover.time)}</div>
-          {hoverChapter?.name && <div className="max-w-56 truncate text-neutral-300">{hoverChapter.name}</div>}
+          {trickplay && <TrickplayPreview trickplay={trickplay} seconds={hover.time} />}
+          <div className="px-2 py-1">
+            <div className="font-semibold tabular-nums">{formatTime(hover.time)}</div>
+            {hoverChapter?.name && <div className="max-w-56 truncate text-neutral-300">{hoverChapter.name}</div>}
+          </div>
         </div>
       )}
       <input
@@ -72,5 +79,30 @@ export function SeekBar({ state, dispatch }: { state: PlayerState; dispatch: (co
         className="absolute inset-0 w-full cursor-pointer opacity-0"
       />
     </div>
+  )
+}
+
+/** Preview frame width in the tooltip (px); frames are scaled from the trickplay resolution. */
+const PREVIEW_WIDTH = 208
+
+function clampCenter(x: number, half: number, width: number) {
+  return Math.min(Math.max(x, half), Math.max(half, width - half))
+}
+
+/** One frame of a trickplay sheet: the sheet as a scaled background, shifted to the frame. */
+function TrickplayPreview({ trickplay, seconds }: { trickplay: Trickplay; seconds: number }) {
+  const { url, x, y } = trickplayFrame(trickplay, seconds)
+  const scale = PREVIEW_WIDTH / trickplay.width
+  return (
+    <div
+      className="bg-black bg-no-repeat"
+      style={{
+        width: PREVIEW_WIDTH,
+        height: Math.round(trickplay.height * scale),
+        backgroundImage: `url("${url}")`,
+        backgroundSize: `${trickplay.columns * trickplay.width * scale}px ${trickplay.rows * trickplay.height * scale}px`,
+        backgroundPosition: `${-x * scale}px ${-y * scale}px`,
+      }}
+    />
   )
 }

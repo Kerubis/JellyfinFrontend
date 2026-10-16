@@ -22,6 +22,8 @@ export type DashboardSection = {
     limit?: number
     /** Window for "new": currentlyWatching badge; newEpisodes only lists episodes added in it (unset = all). */
     days?: number
+    /** Don't show the section at all while it has nothing to show. */
+    hideWhenEmpty?: boolean
   }
 }
 
@@ -108,6 +110,7 @@ export function normalizeSections(value: unknown): DashboardSection[] {
           : undefined,
         limit: typeof options.limit === 'number' ? options.limit : undefined,
         days: typeof options.days === 'number' ? options.days : undefined,
+        hideWhenEmpty: options.hideWhenEmpty === true ? true : undefined,
       },
     })
   }

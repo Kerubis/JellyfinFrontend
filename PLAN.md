@@ -237,7 +237,7 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Profile picker (`/Users/Public` + profiles remembered on the device), multiple stored tokens, quick switch from the header menu
 - [x] `domain/` first types + mappers: `User`, `Library`, `Series`, `Episode`
 - [x] First query hook: user libraries (`UserViews`) rendered as a list
-- [x] `POST /Sessions/Capabilities/Full` on login (playback types only; `SupportsMediaControl` + commands get switched on in M11)
+- [x] `POST /Sessions/Capabilities/Full` on login (playback types only; `SupportsMediaControl` + commands get switched on in M11, see PLAN2.md)
 - [x] Verify in the browser: login, Quick Connect, profile switch, sign out, revoked token → login
 
 ### M2: Profile prefs layer (synced)
@@ -268,11 +268,11 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Two-column layout: header + seasons on the left (sticky), episodes on the right; stacked on narrow screens
 - [x] Series header (compact: poster, years, status, rating, genres, expandable overview, "x / y watched", next episode), season grid with poster previews below the header (specials last, unwatched count per season, selected season in the URL, defaults to the next episode's season), episode grid (wrapping cards: large still = play button, banner with SxxEyy, title, air date, runtime; watched toggle top-right on hover, always shown when watched; progress bar; NEXT marker)
 - [x] Mark watched/unwatched per episode and per season (season: ✓ overlay on the season poster, like episodes; season posters 10rem wide, unwatched count top-left) (optimistic update of the shared watch-state lists, D19)
-- [ ] Play from episode (episode still) / play next (series poster, labelled "Play SxxEyy") / play season (circle on the season poster: next unwatched episode after the furthest watched one in that season, or its first episode when all are watched): clickable areas exist, wired up in M5
+- [x] Play from episode (episode still) / play next (series poster, labelled "Play SxxEyy") / play season (circle on the season poster: next unwatched episode after the furthest watched one in that season, or its first episode when all are watched): clickable areas exist, wired up in M5
 - [x] Follow toggle, "Remove from Currently Watching" (hide)
 - [x] **"Add to Currently Watching"** action: removes the series from `following.hidden` and adds it to `following.followed` (so it shows even without watch history); disabled when everything is watched
 - [x] Spoiler protection (Settings → "Show spoilers"): unwatched episodes get a blurred still; titles stay visible (episode descriptions aren't shown at all)
-- [ ] Verify in the browser (mark watched/unwatched on the real server, season marking, follow/hide round trip)
+- [x] Verify in the browser (mark watched/unwatched on the real server, season marking, follow/hide round trip)
 
 - [x] Episode view inside the series page (`/series/:seriesId/episode/:episodeId`; left column stays, right column shows the episode instead of the list; season of the episode selected; old `/episode/:id` links redirect): still (play / resume, ✓, progress, spoiler blur), series + season links, title, air date, runtime, watched / stopped-at, spoiler-protected description, Play / Resume / Play from start / Mark watched, audio + subtitle languages, previous / next episode
 - [x] Series page accepts `?sn=<season number>` besides `?season=<id>` (links where only the number is known)
@@ -300,7 +300,7 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Settings UI: profile + per-library audio/subtitle languages and mode; "Remembered per series" list with forget / forget all
 - [x] Per-series memory: manual picks are saved by language + title (indices differ between files), latest 300 series, synced
 - [x] Subtitle delay: ±0.1 s in the subtitle menu or G / H, shown and resettable (per playback)
-- [ ] Verify in the browser: DanMachi (jpn/eng audio, Full + Signs/Songs subs), American Made (PGS forced → burned in; Off → audio-only transcode), a library rule for Anime
+- [x] Verify in the browser: DanMachi (jpn/eng audio, Full + Signs/Songs subs), American Made (PGS forced → burned in; Off → audio-only transcode), a library rule for Anime
 
 ### M7: ASS/SSA subtitles
 - [x] JASSUB 2.5.21 added (approved; libass in WebAssembly, LGPL-2.1+). Loaded lazily: the worker/wasm (~0.9 MB gzipped) and fallback font only download when an ASS track plays. `optimizeDeps.exclude: ['jassub']` keeps its `new URL(..., import.meta.url)` assets working in dev. `lfa-ponyfill`'s postinstall (refreshes a Google Fonts list) is left blocked: not needed
@@ -325,8 +325,9 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Editor in Settings → "Home" tab (moved there from an edit mode on the home page), changes saved right away (synced prefs)
 - [x] Per section: ↑/↓ reorder, visible, rename (empty = default title), remove; options per type: max items (empty = default), "NEW" window / "only added in the last N days" (New Episodes), libraries (Recently Added, none = all)
 - [x] Add sections (any type, also several of the same type, e.g. Recently Added per library), reset to default
+- [x] "Hide when empty" per section (shown while loading and on errors, hidden once loaded and empty)
 - [x] Per-device visibility: "Hide on this device" (device-override layer, `dashboard.deviceHidden`, never synced)
-- [ ] Verify in the browser; note: once the dashboard is edited, new default section types no longer appear on their own (use "Add section" / "Reset to default")
+- [x] Verify in the browser; note: once the dashboard is edited, new default section types no longer appear on their own (use "Add section" / "Reset to default")
 
 ### M10: Profiles & child safety
 - [x] Settings → "Profiles & limits" (admins): every other user's **Jellyfin limits** (max rating level, allowed libraries, blocked tags, allowed time windows) edited via `POST /Users/{id}/Policy` (full policy read fresh, patched, written back) + **app limits** written into that user's synced prefs (verified: admins can write other users' DisplayPreferences)
@@ -337,10 +338,7 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [ ] Verify with a kid user (none on the server yet): kid mode, budget, bedtime, Jellyfin limits as seen by the kid
 
 ### M11: Home Assistant remote control
-- [ ] `api/socket.ts`: Jellyfin WebSocket, keep-alive, reconnect
-- [ ] Bridge `Playstate` / `GeneralCommand` / `Play` messages → command dispatcher
-- [ ] Verify with HA's Jellyfin integration: play/pause/seek/next/volume/track, state shown correctly
-- [ ] Document HA setup in README
+Deprioritized, moved to [PLAN2.md](PLAN2.md).
 
 ### M12: Library browsing & search
 - [x] Header navigation: Home + one link per video library
@@ -350,16 +348,17 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Verify in the browser
 - [x] Library, search and all home rows use the shared tile overlay (play, ✓, ⋯, unwatched count) via `MediaItemCard` (D27)
 - [x] Movie detail page (`/item/:id`): poster (play / resume, ✓, progress), year · runtime · age rating · ★ · critics, genres, tagline, description, Play / Resume / Play from start / Mark watched / Favorite, director, writers, cast with roles, studio, audio + subtitle languages, "More like this" row (`/Items/{id}/Similar`); series / episode ids redirect to their pages
-- [ ] Later: A–Z jump for long libraries
-
-### Later: proper Chromecast
-- [ ] Google Cast SDK sender + Jellyfin's Chromecast receiver app: the TV fetches from the server itself (transcodes, track choice, remote control all work). Needs the Cast SDK script from gstatic (ask first: external dependency)
+- [x] A–Z scrollbar (name sort only): fixed letter rail on the right edge that replaces the page scrollbar while shown; letters run in list order (reversed for Z→A), each letter's height proportional to its item count (min 12 px, empty letters stay at the minimum), a thumb spans the part of the list currently on screen and moves continuously (fractional row position, each letter's items spread over its rail rows up to the next letter that has items); click a letter to jump, drag to scrub. One request loads all sort names (`Fields=SortName`, no images / user data) for a letter → position index with the grid's filters; a jump loads pages up to that position first. `#` = digits, symbols, non-Latin; diacritics folded (É → E)
+- [x] Refresh button next to the library name, showing the title count. Admins start the full "Scan Media Library" task (`POST /Library/Refresh`; the per-library `POST /Items/{id}/Refresh` returns 204 but finds no new files, checked 2026-10-16), the button follows the task (`/ScheduledTasks`, % shown) and reloads all user data every 30 s and at the end. Non-admins only reload (scans need admin). Admin flag is refetched on click
+- [x] Verify A–Z jump in the browser
 
 ### M13: TV / 10-foot mode & polish
+- [x] Custom page scrollbar on every page (`PageScrollbar` in Layout, native one hidden): dark rail + light Jellyfin gradient thumb, drag / click-to-jump; generic `ScrollRail` (window or any overflow element) also used for the series page's left pane; shares its look (`scrollRailStyles.ts`) with the library A–Z rail, which replaces the page rail via `useReplacePageScrollbar`
 - [ ] Spatial navigation + focus styles across components
 - [ ] TV device preset (card size, UI scale, hidden sections)
 - [x] Chapters in the seek bar (gaps at chapter starts, intro amber / outro rose highlights, hover tooltip with time + chapter name)
-- [ ] Trickplay thumbnails in the seek-bar tooltip
+- [x] Trickplay thumbnails in the seek-bar tooltip: manifest from the item (`Trickplay[mediaSourceId][width]`), resolution ≥ 320 px picked, frame cut from the tile sheet (`/Videos/{id}/Trickplay/{width}/{n}.jpg`, token in the URL since it's a CSS background) and shown at 208 px above time + chapter; tooltip clamped inside the bar
+- [ ] Verify trickplay in the browser: needs "Enable trickplay image extraction" on the libraries (off on all three, 2026-10-16) and a run of "Generate Trickplay Images"
 - [ ] Performance pass (image sizes via `fillWidth`/`quality`, query caching), responsive layout
 - [ ] Production build + deployment notes (static hosting / served next to Jellyfin)
 

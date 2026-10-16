@@ -1,6 +1,7 @@
 import { episodeLabel } from './media'
 import type { Chapter, Segment } from './segments'
 import type { MediaTracks, TrackChoice } from './tracks'
+import type { Trickplay } from './trickplay'
 
 // Player model. Every way of controlling playback (UI, keyboard, media keys, later Home Assistant via
 // the Jellyfin session socket) goes through PlayerCommand (PLAN.md D8).
@@ -20,6 +21,8 @@ export type NowPlaying = {
   durationSeconds?: number
   /** Library (collection folder) the item belongs to, for per-library language rules. */
   libraryId?: string
+  /** Seek-bar preview frames, when the server has generated them. */
+  trickplay?: Trickplay
 }
 
 export type TextTrack = {

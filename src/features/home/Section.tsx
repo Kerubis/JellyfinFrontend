@@ -7,11 +7,14 @@ type Props<T> = {
   isPending: boolean
   error: unknown
   emptyText: string
+  /** Render nothing (instead of the empty text) once loaded and empty. */
+  hideWhenEmpty?: boolean
   render: (items: readonly T[]) => ReactNode
 }
 
 /** Section frame: title + count, loading/error/empty states. */
-export function Section<T>({ title, items, isPending, error, emptyText, render }: Props<T>) {
+export function Section<T>({ title, items, isPending, error, emptyText, hideWhenEmpty, render }: Props<T>) {
+  if (hideWhenEmpty && !isPending && !error && items.length === 0) return null
   return (
     <section className="flex flex-col gap-2">
       <header className="flex items-baseline gap-2">

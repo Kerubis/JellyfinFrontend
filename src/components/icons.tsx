@@ -120,3 +120,9 @@ export const SubtitlesIcon = (p: IconProps) => (
     <path d="M7 12h4M13 12h4M7 15.5h6M15 15.5h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </Icon>
 )
+
+export const RefreshIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z" />
+  </Icon>
+)

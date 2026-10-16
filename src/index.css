@@ -7,6 +7,46 @@
   --color-accent-500: #22b4e6;
   --color-accent-600: #00a4dc;
   --color-accent-700: #0086b5;
+
+  /* Play triangle pulse while hovering something whose click starts playback. Same 12 s cycle as the ripple:
+     both start on hover, so the triangle is largest when blue reaches the centre and back to rest with violet. */
+  --animate-play-pulse: play-pulse 12s ease-in-out infinite;
+  --animate-play-ripple: play-ripple 12s linear infinite;
+  @keyframes play-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.08);
+    }
+  }
+  /* One gradient period, so the loop is seamless (200% = one violet → blue → violet band in play-ripple-bg). */
+  @keyframes play-ripple {
+    to {
+      --play-ripple: 200%;
+    }
+  }
+}
+
+/* Play circle background: violet/blue bands from the centre outward; shifting --play-ripple (0–200%) moves
+   them out. Deliberately not a repeating gradient: Chrome draws a thin light seam where a repeating gradient
+   wraps, and with moving stops it flickers in and out. These five stops cover the whole radius at any phase. */
+@property --play-ripple {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@utility play-ripple-bg {
+  background-image: radial-gradient(
+    circle closest-side,
+    #aa5cc3 calc(var(--play-ripple) - 200%),
+    #00a4dc calc(var(--play-ripple) - 100%),
+    #aa5cc3 var(--play-ripple),
+    #00a4dc calc(var(--play-ripple) + 100%),
+    #aa5cc3 calc(var(--play-ripple) + 200%)
+  );
 }
 
 :root {

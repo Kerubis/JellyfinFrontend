@@ -80,6 +80,7 @@ function CurrentlyWatchingSection({ section }: SectionProps) {
   return (
     <Section
       title={sectionTitle(section)}
+      hideWhenEmpty={section.options.hideWhenEmpty}
       items={items}
       isPending={isPending}
       error={error}
@@ -136,6 +137,7 @@ function NewEpisodesSection({ section }: SectionProps) {
   return (
     <Section
       title={sectionTitle(section)}
+      hideWhenEmpty={section.options.hideWhenEmpty}
       items={items}
       isPending={isPending}
       error={error}
@@ -159,6 +161,7 @@ function FollowingSection({ section }: SectionProps) {
   return (
     <Section
       title={sectionTitle(section)}
+      hideWhenEmpty={section.options.hideWhenEmpty}
       items={items}
       isPending={isPending}
       error={error}
@@ -199,6 +202,7 @@ function ItemListSection({ section, kind }: SectionProps & { kind: ItemListKind 
   return (
     <Section
       title={sectionTitle(section)}
+      hideWhenEmpty={section.options.hideWhenEmpty}
       items={items}
       isPending={list.isPending}
       error={list.error}

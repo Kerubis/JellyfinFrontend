@@ -43,3 +43,13 @@ export function libraryQueryParams(query: LibraryQuery): Record<string, string> 
   if (query.year) params.year = String(query.year)
   return params
 }
+
+/** Letters of the A–Z jump bar; '#' collects digits, symbols and non-Latin titles. */
+export const LETTERS = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] as const
+
+/** Jump-bar bucket of a sort name ("Ébène" → "E", "86" → "#"). */
+export function letterOf(sortName: string): string {
+  const first = sortName.normalize('NFD').charAt(0).toUpperCase()
+  return first >= 'A' && first <= 'Z' ? first : '#'
+}
+

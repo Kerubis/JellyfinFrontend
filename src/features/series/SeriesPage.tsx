@@ -1,7 +1,10 @@
+import { useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/errors'
 import { usePref } from '@/api/prefs-context'
 import { useEpisode, useSeasonEpisodes, useSeasons, useSeriesDetails, useSeriesWatchState, useSetPlayed } from '@/api/queries/series'
+import { ScrollRail } from '@/components/ScrollRail'
+import { RAIL_LOOK } from '@/components/scrollRailStyles'
 import { sortSeasons } from '@/domain/series'
 import { seasonPath } from '@/features/home/links'
 import { usePlay } from '@/features/player/player-context'
@@ -22,6 +25,7 @@ export function SeriesPage() {
   const watch = useSeriesWatchState(seriesId)
   const setPlayed = useSetPlayed()
   const play = usePlay()
+  const pane = useRef<HTMLElement>(null)
 
   const sorted = sortSeasons(seasons.data ?? [])
   // Selected season lives in the URL (back/forward keeps it); default: the season of the next episode.
@@ -41,29 +45,35 @@ export function SeriesPage() {
   return (
     <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[clamp(24rem,32vw,44rem)_1fr] lg:items-start">
       {/* Left: series info + seasons; stays in view while the episode list scrolls. */}
-      <aside className="flex flex-col gap-4 lg:sticky lg:top-14 lg:max-h-[calc(100svh-4rem)] lg:overflow-y-auto lg:pr-1">
-        <SeriesHeader
-          series={details.data}
-          playedCount={watch.playedCount}
-          totalCount={watch.totalCount}
-          next={watch.next}
-          playTarget={watch.playTarget}
-          onPlay={(id) => play(id)}
-        />
-        <SeasonGrid
-          seasons={sorted}
-          selectedId={selected?.id}
-          bySeason={watch.bySeason}
-          fallbackPosterUrl={details.data.posterUrl}
-          onSelect={(id) => (episodeId ? navigate(seasonPath(seriesId, { id })) : setParams({ season: id }, { replace: true }))}
-          onSetPlayed={(season, played) => {
-            const state = watch.bySeason.get(season.number)
-            const episodes = [...(state?.played ?? []), ...(state?.unplayed ?? [])]
-            setPlayed.mutate({ itemId: season.id, played, episodes })
-          }}
-          onPlay={(id) => play(id)}
-        />
-      </aside>
+      <div className="relative lg:sticky lg:top-14">
+        <aside
+          ref={pane}
+          className="flex flex-col gap-4 [scrollbar-width:none] lg:max-h-[calc(100svh-4rem)] lg:overflow-y-auto lg:pr-7"
+        >
+          <SeriesHeader
+            series={details.data}
+            playedCount={watch.playedCount}
+            totalCount={watch.totalCount}
+            next={watch.next}
+            playTarget={watch.playTarget}
+            onPlay={(id) => play(id)}
+          />
+          <SeasonGrid
+            seasons={sorted}
+            selectedId={selected?.id}
+            bySeason={watch.bySeason}
+            fallbackPosterUrl={details.data.posterUrl}
+            onSelect={(id) => (episodeId ? navigate(seasonPath(seriesId, { id })) : setParams({ season: id }, { replace: true }))}
+            onSetPlayed={(season, played) => {
+              const state = watch.bySeason.get(season.number)
+              const episodes = [...(state?.played ?? []), ...(state?.unplayed ?? [])]
+              setPlayed.mutate({ itemId: season.id, played, episodes })
+            }}
+            onPlay={(id) => play(id)}
+          />
+        </aside>
+        <ScrollRail target={pane} hideWhenIdle className={`absolute top-0 right-0 bottom-0 rounded ${RAIL_LOOK}`} />
+      </div>
 
       {episodeId ? (
         <section className="min-w-0">

@@ -14,12 +14,27 @@ const SIZES = {
 
 type Size = keyof typeof SIZES
 
-/** Blue circle with a black play icon. */
-export function PlayCircle({ size = 'md' }: { size?: Size }) {
+/**
+ * The triangle pulses (and the circle's rings wander outwards) while the thing that starts playback is hovered or focused:
+ * `group` = the surrounding `group` element (the whole tile/poster plays), `self` = only the circle's own
+ * button, marked `group/play` (tiles where a click elsewhere does something else, e.g. pick a season).
+ */
+const PULSE = {
+  group: 'motion-safe:group-hover:animate-play-pulse motion-safe:group-focus-visible:animate-play-pulse',
+  self: 'motion-safe:group-hover/play:animate-play-pulse motion-safe:group-focus-visible/play:animate-play-pulse',
+}
+/** Same trigger for the circle's gradient rings wandering outwards. */
+const RIPPLE = {
+  group: 'motion-safe:group-hover:animate-play-ripple motion-safe:group-focus-visible:animate-play-ripple',
+  self: 'motion-safe:group-hover/play:animate-play-ripple motion-safe:group-focus-visible/play:animate-play-ripple',
+}
+
+/** Violet/blue ringed circle with a black play icon. */
+export function PlayCircle({ size = 'md', pulse = 'group' }: { size?: Size; pulse?: keyof typeof PULSE }) {
   const s = SIZES[size]
   return (
-    <span className={`flex items-center justify-center rounded-full bg-accent-600/90 shadow-lg ${s.circle}`}>
-      <PlayIcon className={`text-black ${s.icon}`} />
+    <span className={`play-ripple-bg flex items-center justify-center rounded-full shadow-lg ${RIPPLE[pulse]} ${s.circle}`}>
+      <PlayIcon className={`text-black ${s.icon} ${PULSE[pulse]}`} />
     </span>
   )
 }
