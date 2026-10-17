@@ -12,6 +12,8 @@ export type SafetyPrefs = {
   bedtime: Bedtime
   /** Off: no Home page / link, the app starts in the first library (e.g. for guests). */
   showHome: boolean
+  /** When the daily time runs out or bedtime starts mid-playback: let it finish if it ends within this many minutes (0 = stop). */
+  finishWithinMinutes: number
   /** Sign the profile out after this many minutes without watching (0 = never), e.g. for guests. */
   autoSignOutMinutes: number
   /** Extra minutes an admin granted for one day (on top of dailyMinutes; ignored on other days). */
@@ -25,6 +27,7 @@ export const DEFAULT_SAFETY: SafetyPrefs = {
   dailyMinutes: 0,
   bedtime: { enabled: false, start: '20:00', end: '07:00' },
   showHome: true,
+  finishWithinMinutes: 0,
   autoSignOutMinutes: 0,
   extra: { date: '', minutes: 0 },
 }
@@ -61,6 +64,16 @@ export function secondsLeftToday(safety: SafetyPrefs, usage: SafetyUsage, now: D
   return budget === null ? null : Math.max(0, budget - usedSecondsToday(usage, now))
 }
 
+/**
+ * Seconds the current item may still play after the daily time ran out, or null when it has to stop now
+ * (no grace window, or it doesn't end within it).
+ */
+export function finishGraceSeconds(safety: SafetyPrefs, positionSeconds: number, durationSeconds: number): number | null {
+  if (safety.finishWithinMinutes <= 0 || durationSeconds <= 0) return null
+  const remaining = durationSeconds - positionSeconds
+  return remaining <= safety.finishWithinMinutes * 60 ? remaining : null
+}
+
 /** Adds minutes to today's extra time (a new day starts from zero). */
 export function grantExtra(safety: SafetyPrefs, minutes: number, now: Date): SafetyPrefs {
   const today = localDate(now)
@@ -90,16 +103,28 @@ export function playbackBlock(safety: SafetyPrefs, usage: SafetyUsage, now: Date
   return null
 }
 
-/** A short heads-up shown in the player before a limit is reached, or null. */
+/**
+ * Whichever limit comes first: seconds until bedtime or until the daily budget is used up (0 = reached now).
+ * Null when the profile has neither.
+ */
+export function nextLimit(safety: SafetyPrefs, usage: SafetyUsage, now: Date): { seconds: number; kind: 'bedtime' | 'budget' } | null {
+  const bed = inBedtime(safety.bedtime, now) ? 0 : secondsUntilBedtime(safety.bedtime, now)
+  const budget = secondsLeftToday(safety, usage, now)
+  if (bed === null && budget === null) return null
+  if (budget === null || (bed !== null && bed <= budget)) return { seconds: bed ?? 0, kind: 'bedtime' }
+  return { seconds: budget, kind: 'budget' }
+}
+
+/** A short heads-up shown in the player before the first limit is reached, or null. */
 export function limitWarning(safety: SafetyPrefs, usage: SafetyUsage, now: Date): string | null {
+  const next = nextLimit(safety, usage, now)
+  if (!next || next.seconds <= 0) return null
   // Playback stops when bedtime starts; the last minute counts down in seconds.
-  const untilBed = secondsUntilBedtime(safety.bedtime, now)
-  if (untilBed !== null && untilBed <= 10 * 60) {
-    const left = untilBed < 60 ? `${untilBed} s` : `${Math.ceil(untilBed / 60)} min`
+  if (next.kind === 'bedtime' && next.seconds <= 10 * 60) {
+    const left = next.seconds < 60 ? `${next.seconds} s` : `${Math.ceil(next.seconds / 60)} min`
     return `Bedtime in ${left} – no more TV after that.`
   }
-  const left = secondsLeftToday(safety, usage, now)
-  if (left !== null && left > 0 && left <= 5 * 60) return `${Math.ceil(left / 60)} min of watching left today.`
+  if (next.kind === 'budget' && next.seconds <= 5 * 60) return `${Math.ceil(next.seconds / 60)} min of watching left today.`
   return null
 }
 

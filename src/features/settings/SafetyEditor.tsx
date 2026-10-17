@@ -42,6 +42,14 @@ function SafetyForm({ userId, initial }: { userId: string; initial: SafetyPrefs 
         suffix="min (0 = unlimited)"
         onChange={(dailyMinutes) => set({ dailyMinutes })}
       />
+      <NumberField
+        label="Let it finish if it ends within"
+        value={draft.finishWithinMinutes}
+        min={0}
+        max={180}
+        suffix="min after the time is up or bedtime starts (0 = stop right away)"
+        onChange={(finishWithinMinutes) => set({ finishWithinMinutes })}
+      />
       <TodayUsage userId={userId} />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <CheckboxField label="Bedtime from" checked={bedtime.enabled} onChange={(enabled) => set({ bedtime: { ...bedtime, enabled } })} />
@@ -58,7 +66,7 @@ function SafetyForm({ userId, initial }: { userId: string; initial: SafetyPrefs 
           variant="primary"
           disabled={save.isPending || !valid}
           // Only this form's fields: auto sign-out (account section) and extra time are kept as stored.
-          onClick={() => save.mutate({ userId, patch: { kidMode: draft.kidMode, dailyMinutes: draft.dailyMinutes, bedtime: draft.bedtime, showHome: draft.showHome } })}
+          onClick={() => save.mutate({ userId, patch: { kidMode: draft.kidMode, dailyMinutes: draft.dailyMinutes, finishWithinMinutes: draft.finishWithinMinutes, bedtime: draft.bedtime, showHome: draft.showHome } })}
         >
           {save.isPending ? 'Saving…' : 'Save app limits'}
         </Button>

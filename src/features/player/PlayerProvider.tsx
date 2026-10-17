@@ -16,7 +16,7 @@ import { usePref } from '@/api/prefs-context'
 import { watchKeys } from '@/api/queries/home'
 import { useSignedIn } from '@/api/session-context'
 import { skipSeconds } from '@/domain/prefs'
-import { hasLimits, inBedtime, localDate, playbackBlock, secondsLeftToday, usedSecondsToday, type SafetyUsage } from '@/domain/safety'
+import { finishGraceSeconds, hasLimits, inBedtime, localDate, playbackBlock, secondsLeftToday, usedSecondsToday, type SafetyUsage } from '@/domain/safety'
 import { chooseTracks, memoryFor, resolveRule } from '@/domain/tracks'
 import { useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
 import { detectCapabilities } from '@/lib/codecs'
@@ -125,6 +125,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Soft limits: count watch time (only for profiles with limits) and stop when the daily budget runs out.
   const limited = hasLimits(safety)
+  /** The item allowed to finish after the budget ran out, and until when. */
+  const finishing = useRef<{ itemId: string; until: number } | null>(null)
   const usageUpdateRef = useRef(safetyUsage.update)
   const storedUsage = safetyUsage.value
   useEffect(() => {
@@ -157,7 +159,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (budgetUsed) {
         if (unsaved > 0) updateUsage(usageRef.current)
         unsaved = 0
-        engine.enforceLimit(playbackBlock(safetyRef.current, usageRef.current, now) ?? 'Time is up for today.')
+        // Grace: decided once per item when the time runs out, with a deadline (seeking back can't stretch it).
+        const state = engine.getState()
+        const itemId = state.item?.id
+        if (itemId && finishing.current?.itemId !== itemId) {
+          const grace = finishGraceSeconds(safetyRef.current, state.position, state.duration)
+          finishing.current = grace === null ? null : { itemId, until: now.getTime() + (grace + 30) * 1000 }
+        }
+        const mayFinish = !!finishing.current && finishing.current.itemId === itemId && now.getTime() < finishing.current.until
+        if (!mayFinish) engine.enforceLimit(playbackBlock(safetyRef.current, usageRef.current, now) ?? 'Time is up for today.')
+      } else {
+        finishing.current = null
       }
     }, USAGE_TICK_S * 1000)
     return () => {
@@ -166,15 +178,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [engine, limited])
 
-  // Bedtime: playback stops the moment it starts (checked every second while a profile with a bedtime watches).
+  // Bedtime: playback stops the moment it starts (checked every second while a profile with a bedtime watches),
+  // unless the current item ends within the grace window (same rule as for the daily budget).
   const bedtimeOn = safety.bedtime.enabled
   useEffect(() => {
     if (!bedtimeOn) return
+    let finishingBed: { itemId: string; until: number } | null = null
     const timer = window.setInterval(() => {
-      const status = engine.getState().status
-      if (status !== 'playing' && status !== 'paused' && status !== 'loading') return
+      const state = engine.getState()
+      if (state.status !== 'playing' && state.status !== 'paused' && state.status !== 'loading') return
       const now = new Date()
-      if (inBedtime(safetyRef.current.bedtime, now)) engine.enforceLimit(playbackBlock(safetyRef.current, usageRef.current, now) ?? "It's bedtime.")
+      if (!inBedtime(safetyRef.current.bedtime, now)) {
+        finishingBed = null
+        return
+      }
+      const itemId = state.item?.id
+      if (itemId && finishingBed?.itemId !== itemId) {
+        const grace = state.status === 'loading' ? null : finishGraceSeconds(safetyRef.current, state.position, state.duration)
+        finishingBed = grace === null ? null : { itemId, until: now.getTime() + (grace + 30) * 1000 }
+      }
+      const mayFinish = !!finishingBed && finishingBed.itemId === itemId && now.getTime() < finishingBed.until
+      if (!mayFinish) engine.enforceLimit(playbackBlock(safetyRef.current, usageRef.current, now) ?? "It's bedtime.")
     }, 1000)
     return () => window.clearInterval(timer)
   }, [engine, bedtimeOn])

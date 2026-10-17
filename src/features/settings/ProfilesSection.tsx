@@ -35,6 +35,9 @@ function OwnRestrictions({ user }: { user: ManagedUser }) {
   }
   if (safety.bedtime.enabled) rows.push(['Bedtime', `${time.clock(safety.bedtime.start)}–${time.clock(safety.bedtime.end)}`])
   if (!safety.showHome) rows.push(['Home page', 'hidden'])
+  if ((safety.dailyMinutes > 0 || safety.bedtime.enabled) && safety.finishWithinMinutes > 0) {
+    rows.push(['When the time is up / at bedtime', `an episode or movie ending within ${safety.finishWithinMinutes} min may finish`])
+  }
   if (safety.autoSignOutMinutes > 0) rows.push(['Automatic sign-out', `after ${safety.autoSignOutMinutes} min without watching`])
   return (
     <section className="flex flex-col gap-2">

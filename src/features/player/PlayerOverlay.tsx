@@ -3,7 +3,7 @@ import { useLocation } from 'react-router'
 import { usePref } from '@/api/prefs-context'
 import { Button } from '@/components/Button'
 import { formatTime, type PlayerCommand, type PlayerState } from '@/domain/player'
-import { hasLimits, limitWarning, secondsUntilBedtime } from '@/domain/safety'
+import { hasLimits, inBedtime, limitWarning, secondsLeftToday, secondsUntilBedtime } from '@/domain/safety'
 import { SkipSegmentButton, UpNextCard } from './AutoplayUi'
 import { BottomBar, MiniControls } from './PlayerControls'
 import { usePlayerDispatch, usePlayerEngine, usePlayerState } from './player-context'
@@ -88,8 +88,12 @@ export function PlayerOverlay() {
       <StatusLayer state={state} dispatch={dispatch} compact={!full} />
 
       {active && full && limitNotice && !state.limitReached && (
-        <div className="pointer-events-none absolute top-4 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/80 px-4 py-1.5 text-sm text-amber-200 shadow-lg">
-          {limitNotice}
+        <div
+          className={`pointer-events-none absolute top-4 left-1/2 z-20 -translate-x-1/2 rounded-full px-4 py-1.5 text-sm shadow-lg ${
+            limitNotice.overtime ? 'bg-red-700/90 font-medium text-white ring-1 ring-red-400/60' : 'bg-black/80 text-amber-200'
+          }`}
+        >
+          {limitNotice.text}
         </div>
       )}
 
@@ -192,7 +196,8 @@ function StatusLayer({ state, dispatch, compact }: { state: PlayerState; dispatc
 }
 
 /** Heads-up before a soft limit (bedtime / daily budget): every second in the last 10 minutes before bedtime, else every 30 s. */
-function useLimitNotice(active: boolean): string | null {
+/** `overtime`: still playing after the time ran out / bedtime started (red); otherwise a warning before it (amber). */
+function useLimitNotice(active: boolean): { text: string; overtime: boolean } | null {
   const safety = usePref('safety').value
   const usage = usePref('safetyUsage').value
   const [now, setNow] = useState(() => new Date())
@@ -209,7 +214,12 @@ function useLimitNotice(active: boolean): string | null {
     tick()
     return () => window.clearTimeout(timer)
   }, [watched, safety.bedtime])
-  return watched ? limitWarning(safety, usage, now) : null
+  if (!watched) return null
+  // Still playing although bedtime started / the time is used up = allowed to finish (otherwise it would have stopped).
+  if (inBedtime(safety.bedtime, now)) return { text: "It's bedtime – this one may still finish.", overtime: true }
+  if (secondsLeftToday(safety, usage, now) === 0) return { text: "Time's up for today – this one may still finish.", overtime: true }
+  const warning = limitWarning(safety, usage, now)
+  return warning ? { text: warning, overtime: false } : null
 }
 
 /** Browsing elsewhere while something plays shrinks the player to the mini player. */
