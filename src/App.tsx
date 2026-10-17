@@ -9,6 +9,7 @@ import { ProfileMenu } from '@/features/auth/ProfileMenu'
 import { ServerSetup } from '@/features/auth/ServerSetup'
 import { HomeRoute } from '@/features/home/HomeRoute'
 import { LibraryNav } from '@/features/library/LibraryNav'
+import { AutoSignOut } from '@/features/limits/AutoSignOut'
 import { TimeLeftChip } from '@/features/limits/TimeLeftChip'
 import { LibraryPage } from '@/features/library/LibraryPage'
 import { MoviePage } from '@/features/movies/MoviePage'
@@ -57,6 +58,7 @@ export default function App() {
         </Layout>
         {/* Outside <Routes>, so navigation never interrupts playback. */}
         <PlayerOverlay />
+        <AutoSignOut />
       </PlayerProvider>
     </PrefsProvider>
   )

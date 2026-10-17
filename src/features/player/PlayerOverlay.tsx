@@ -57,7 +57,7 @@ export function PlayerOverlay() {
     ? 'hidden'
     : full
       ? 'fixed inset-0 z-50 bg-black'
-      : 'group fixed right-4 bottom-4 z-50 aspect-video w-144 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg bg-black shadow-2xl ring-1 ring-white/10'
+      : 'group fixed right-4 bottom-4 z-50 aspect-video w-216 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg bg-black shadow-2xl ring-1 ring-white/10'
 
   return (
     <div ref={containerRef} className={`${containerClass} ${full && idle ? 'cursor-none' : ''}`} onMouseMove={poke}>

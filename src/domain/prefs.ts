@@ -224,6 +224,7 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
     normalize: (v) => ({
       kidMode: v.kidMode,
       dailyMinutes: clamp(Math.round(v.dailyMinutes), 0, 24 * 60),
+      autoSignOutMinutes: clamp(Math.round(v.autoSignOutMinutes), 0, 24 * 60),
       bedtime: {
         enabled: isRecord(v.bedtime) && v.bedtime.enabled === true,
         start: isRecord(v.bedtime) && typeof v.bedtime.start === 'string' && HHMM.test(v.bedtime.start) ? v.bedtime.start : DEFAULT_SAFETY.bedtime.start,

@@ -12,6 +12,8 @@ export type SafetyPrefs = {
   bedtime: Bedtime
   /** Off: no Home page / link, the app starts in the first library (e.g. for guests). */
   showHome: boolean
+  /** Sign the profile out after this many minutes without watching (0 = never), e.g. for guests. */
+  autoSignOutMinutes: number
   /** Extra minutes an admin granted for one day (on top of dailyMinutes; ignored on other days). */
   extra: { /** Local date "YYYY-MM-DD" */ date: string; minutes: number }
 }
@@ -23,6 +25,7 @@ export const DEFAULT_SAFETY: SafetyPrefs = {
   dailyMinutes: 0,
   bedtime: { enabled: false, start: '20:00', end: '07:00' },
   showHome: true,
+  autoSignOutMinutes: 0,
   extra: { date: '', minutes: 0 },
 }
 
@@ -38,7 +41,7 @@ const minutesOfDay = (hhmm: string) => {
 }
 
 export function hasLimits(safety: SafetyPrefs): boolean {
-  return safety.dailyMinutes > 0 || safety.bedtime.enabled || !safety.showHome
+  return safety.dailyMinutes > 0 || safety.bedtime.enabled || !safety.showHome || safety.autoSignOutMinutes > 0
 }
 
 export function usedSecondsToday(usage: SafetyUsage, now: Date): number {

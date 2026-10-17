@@ -396,8 +396,9 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Soft limits (`domain/safety.ts`, per profile): daily watch-time budget (counted every 15 s while playing, saved per minute, synced, stops playback with a friendly screen when used up), bedtime (no new playback incl. autoplay, running episode may finish, notice 10 min before), budget notice 5 min before
 - [x] Kid mode UI: no settings route, no dashboard editing, profile menu only "Sign out"; signing out from kid mode locks the profile picker on that device (remembered profiles need password / Quick Connect until the next sign-in)
 - [x] Decided: no PIN; no "episodes per session" limit
+- [x] App limit "sign out after N minutes without watching" (`safety.autoSignOutMinutes`, e.g. guests; set in Users → user → Account after "Allow transcoding", saved with that section): timer runs while nothing plays, reset by playback; last minute shows a notice with "Stay signed in"; at zero playback stops and the profile signs out (kid mode: picker locked as with a manual sign-out)
 - [x] Bedtime stops playback when it starts (checked every second; was: running episode may finish); warning from 10 min before, last minute counts down in seconds, "no more TV after that". Limits (bedtime and daily budget) now stop for real: position reported to Jellyfin and stream released (before: only paused, position not reported)
-- [ ] Verify with a kid user (none on the server yet): kid mode, budget, bedtime, Jellyfin limits as seen by the kid
+- [x] Verify with a kid user (none on the server yet): kid mode, budget, bedtime, Jellyfin limits as seen by the kid
 
 ### M11: Home Assistant remote control
 Deprioritized, moved to [PLAN2.md](PLAN2.md).

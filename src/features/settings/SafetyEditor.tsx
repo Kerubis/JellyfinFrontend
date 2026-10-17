@@ -54,7 +54,12 @@ function SafetyForm({ userId, initial }: { userId: string; initial: SafetyPrefs 
         Soft limits can be worked around by someone who uses the Jellyfin API directly; the Jellyfin limits above can't.
       </p>
       <div className="flex items-center gap-3">
-        <Button variant="primary" disabled={save.isPending || !valid} onClick={() => save.mutate({ userId, safety: draft })}>
+        <Button
+          variant="primary"
+          disabled={save.isPending || !valid}
+          // Only this form's fields: auto sign-out (account section) and extra time are kept as stored.
+          onClick={() => save.mutate({ userId, patch: { kidMode: draft.kidMode, dailyMinutes: draft.dailyMinutes, bedtime: draft.bedtime, showHome: draft.showHome } })}
+        >
           {save.isPending ? 'Saving…' : 'Save app limits'}
         </Button>
         {save.isSuccess && <span className="text-xs text-neutral-400">Saved</span>}

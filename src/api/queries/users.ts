@@ -132,16 +132,15 @@ export function useUserSafety(userId: string | undefined) {
 }
 
 /**
- * Saves another user's soft limits. Extra time granted meanwhile (another tab, the buttons) is read fresh and
- * kept, so an older form state can't take it away.
+ * Saves some of another user's soft limits: the stored limits are read fresh and only `patch` is applied, so
+ * forms editing different fields (app limits, account section) and granted extra time never overwrite each other.
  */
 export function useSaveUserSafety() {
   const { server, account } = useSignedIn()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ userId, safety }: { userId: string; safety: SafetyPrefs }) => {
-      const fresh = (await fetchProfilePrefs(server, account, userId)).safety
-      const next = { ...safety, extra: fresh.extra }
+    mutationFn: async ({ userId, patch }: { userId: string; patch: Partial<SafetyPrefs> }) => {
+      const next = { ...(await fetchProfilePrefs(server, account, userId)).safety, ...patch }
       await writeProfilePrefs(server, account, { safety: next }, userId)
       return next
     },

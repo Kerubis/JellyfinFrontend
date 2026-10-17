@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/errors'
-import { useCreateUser, useDeleteUser, useSetUserPassword, useUpdateUserAccount, useUsers } from '@/api/queries/users'
+import { useCreateUser, useDeleteUser, useSaveUserSafety, useSetUserPassword, useUpdateUserAccount, useUserSafety, useUsers } from '@/api/queries/users'
 import { useSignedIn } from '@/api/session-context'
 import { ErrorText } from '@/components/AuthCard'
 import { Avatar } from '@/components/Avatar'
 import { Button } from '@/components/Button'
 import { ConfirmButton } from '@/components/ConfirmButton'
-import { CheckboxField } from '@/components/form'
+import { CheckboxField, NumberField } from '@/components/form'
 import { TextField } from '@/components/TextField'
 import { hasHardLimits, type ManagedUser, type UserAccess } from '@/domain/users'
 import { formatRelative } from '@/lib/format'
@@ -142,10 +142,28 @@ const ACCESS_FIELDS: { key: keyof UserAccess; label: string }[] = [
 ]
 
 function AccountSection({ user, isMe }: { user: ManagedUser; isMe: boolean }) {
+  const stored = useUserSafety(user.id)
+  // Wait for the stored app limits, so the sign-out field starts with the saved value.
+  if (stored.isPending) return null
+  return <AccountForm user={user} isMe={isMe} storedSignOut={stored.data?.autoSignOutMinutes ?? 0} />
+}
+
+function AccountForm({ user, isMe, storedSignOut }: { user: ManagedUser; isMe: boolean; storedSignOut: number }) {
   const update = useUpdateUserAccount()
+  const saveSafety = useSaveUserSafety()
   const [name, setName] = useState(user.name)
   const [access, setAccess] = useState<UserAccess>(user.access)
-  const dirty = name.trim() !== user.name || ACCESS_FIELDS.some(({ key }) => access[key] !== user.access[key])
+  const [signOut, setSignOut] = useState(storedSignOut)
+  const accountDirty = name.trim() !== user.name || ACCESS_FIELDS.some(({ key }) => access[key] !== user.access[key])
+  const signOutDirty = signOut !== storedSignOut
+  const dirty = accountDirty || signOutDirty
+  const saving = update.isPending || saveSafety.isPending
+
+  const save = () => {
+    if (accountDirty) update.mutate({ userId: user.id, name, access })
+    // Stored with the user's app limits (synced prefs), not in the Jellyfin policy.
+    if (signOutDirty) saveSafety.mutate({ userId: user.id, patch: { autoSignOutMinutes: signOut } })
+  }
 
   return (
     <section className="flex flex-col gap-2">
@@ -160,14 +178,15 @@ function AccountSection({ user, isMe }: { user: ManagedUser; isMe: boolean }) {
           onChange={(v) => (isMe && (key === 'isAdmin' || key === 'disabled') ? undefined : setAccess((a) => ({ ...a, [key]: v })))}
         />
       ))}
+      <NumberField label="Sign out after not watching for" value={signOut} min={0} max={1440} suffix="min (0 = never)" onChange={setSignOut} />
       {isMe && <p className="text-xs text-neutral-500">Your own admin and disabled switches can't be changed here.</p>}
       <div className="flex items-center gap-2">
-        <Button variant="primary" disabled={!dirty || update.isPending || !name.trim()} onClick={() => update.mutate({ userId: user.id, name, access })}>
-          {update.isPending ? 'Saving…' : 'Save'}
+        <Button variant="primary" disabled={!dirty || saving || !name.trim()} onClick={save}>
+          {saving ? 'Saving…' : 'Save'}
         </Button>
-        {update.isSuccess && !dirty && <span className="text-sm text-emerald-400">Saved.</span>}
+        {(update.isSuccess || saveSafety.isSuccess) && !dirty && <span className="text-sm text-emerald-400">Saved.</span>}
       </div>
-      {update.isError && <ErrorText>{errorMessage(update.error)}</ErrorText>}
+      {(update.isError || saveSafety.isError) && <ErrorText>{errorMessage(update.error ?? saveSafety.error)}</ErrorText>}
     </section>
   )
 }
