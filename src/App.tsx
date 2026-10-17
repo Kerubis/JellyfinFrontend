@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { PrefsProvider } from '@/api/PrefsProvider'
+import { useServerUnreachable } from '@/api/queries/server'
 import { useSession } from '@/api/session-context'
 import { Layout } from '@/components/Layout'
 import { LoginPage } from '@/features/auth/LoginPage'
@@ -19,7 +20,10 @@ import { SettingsPage } from '@/features/settings/SettingsPage'
 
 export default function App() {
   const { server, account } = useSession()
+  const unreachable = useServerUnreachable(server)
   if (!server) return <ServerSetup />
+  // Saved server doesn't answer (new IP, stopped): back to setup with the old address, profiles are kept.
+  if (unreachable) return <ServerSetup unreachable={server} />
   if (!account) return <LoginPage server={server} />
 
   return (

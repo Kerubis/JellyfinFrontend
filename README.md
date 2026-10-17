@@ -38,7 +38,7 @@ Then in Unraid: Docker → Check for updates → apply update. The version is sh
    ```
 3. Docker → Add Container → Template: `JellyfinFrontend`.
    - Network type `br0`, set a **fixed IP address**.
-   - **Jellyfin server URL**: how the *browser* reaches Jellyfin, e.g. `http://172.16.100.228:8096`.
+   - **Jellyfin server URL**: how the *browser* reaches Jellyfin, e.g. `http://172.16.100.12:8096`.
 4. Open `http://<container IP>/`.
 
 ### How it works

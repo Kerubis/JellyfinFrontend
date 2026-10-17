@@ -130,6 +130,10 @@ export class PlayerEngine {
     const offs = [
       on('timeupdate', () => {
         this.set({ position: video.currentTime })
+        // Safety net: the video is visibly running but no `playing` event switched us out of "loading".
+        if (this.state.status === 'loading' && !video.paused && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+          this.onPlaying()
+        }
         this.onTime(video.currentTime)
       }),
       on('durationchange', () => {
@@ -395,8 +399,9 @@ export class PlayerEngine {
 
     const token = ++this.loadToken
     const position = this.video?.currentTime ?? this.state.position
-    await this.teardown()
+    const reported = this.teardown()
     this.set({ status: 'loading', source: undefined })
+    await reported
     try {
       await this.startSource(token, item, position)
     } catch (error) {
@@ -428,7 +433,7 @@ export class PlayerEngine {
     window.clearTimeout(this.upNextTimer)
     this.handledSegments = new Set()
     this.upNextDismissed = false
-    await this.teardown()
+    const reported = this.teardown()
     this.set({
       status: 'loading',
       item: undefined,
@@ -450,6 +455,8 @@ export class PlayerEngine {
       stillWatching: false,
       limitReached: undefined,
     })
+    // Spinner shows immediately; the server gets "stopped" for the old item before anything new starts.
+    await reported
     try {
       const fresh = this.prefetched?.itemId === itemId && Date.now() - this.prefetched.at < PREFETCH_MAX_AGE_MS
       const prefetched = fresh ? this.prefetched : null
@@ -558,9 +565,11 @@ export class PlayerEngine {
   }
 
   private onPlaying() {
-    const { item, source } = this.state
-    if (!item || !source) return
+    const { item, source, status } = this.state
+    if (status === 'idle') return
+    // The video runs, so the spinner goes regardless; reporting needs the item and its source.
     this.set({ status: 'playing' })
+    if (!item || !source) return
     if (this.started) {
       this.reportProgress()
       return
@@ -595,15 +604,21 @@ export class PlayerEngine {
     this.prefetched = null
     const { item } = this.state
     const wasStarted = this.started
-    if (document.fullscreenElement) await document.exitFullscreen().catch(warn('exit fullscreen'))
-    await this.teardown()
+    if (document.fullscreenElement) void document.exitFullscreen().catch(warn('exit fullscreen'))
+    // Close right away; the server can take a while to confirm "stopped" (closing a large stream / transcode).
+    const reported = this.teardown()
     this.set({ ...INITIAL_PLAYER_STATE, volume: this.state.volume, muted: this.state.muted })
+    await reported
+    // After the report, so refreshed lists see the saved position / watched state.
     if (wasStarted && item) this.deps.onStopped?.(item)
   }
 
-  /** Reports "stopped" if needed and releases the stream. */
-  private async teardown() {
-    await this.reportStopped()
+  /**
+   * Releases the stream right away; the returned promise settles once "stopped" is reported. The report
+   * takes the final position synchronously (before its first await), i.e. before the video is unloaded.
+   */
+  private teardown(): Promise<void> {
+    const reported = this.reportStopped()
     this.hls?.destroy()
     this.hls = null
     const video = this.video
@@ -611,6 +626,7 @@ export class PlayerEngine {
       video.removeAttribute('src')
       video.load()
     }
+    return reported
   }
 
   private async reportStopped() {

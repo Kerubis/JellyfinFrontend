@@ -40,7 +40,14 @@ export type UiPrefs = {
   cardSize: CardSize
   /** Show thumbnails and descriptions of unwatched episodes. */
   showSpoilers: boolean
+  /** Text colour of the header links by NAV_HOME or library id (#rrggbb); missing = default grey/white. */
+  navColors: Record<string, string>
 }
+
+/** navColors key of the "Home" link. */
+export const NAV_HOME = 'home'
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -165,7 +172,15 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
   },
   ui: {
     version: 1,
-    defaults: { cardSize: 'sm', showSpoilers: false },
+    defaults: { cardSize: 'sm', showSpoilers: false, navColors: {} },
+    normalize: (v) => ({
+      ...v,
+      navColors: Object.fromEntries(
+        Object.entries(isRecord(v.navColors) ? v.navColors : {}).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string' && HEX_COLOR.test(entry[1]),
+        ),
+      ),
+    }),
   },
   following: {
     version: 2,

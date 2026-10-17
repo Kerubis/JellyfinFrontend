@@ -17,3 +17,10 @@ export type Library = {
   type: LibraryType
   imageUrl?: string
 }
+
+const BROWSABLE: readonly LibraryType[] = ['tvshows', 'movies', 'boxsets', 'homevideos', 'other']
+
+/** Libraries with their own header link and grid (video; music, books etc. aren't browsable here). */
+export function isBrowsable(library: Library): boolean {
+  return BROWSABLE.includes(library.type)
+}

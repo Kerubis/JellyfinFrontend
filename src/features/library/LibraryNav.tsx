@@ -1,20 +1,29 @@
 import { NavLink } from 'react-router'
+import { usePref } from '@/api/prefs-context'
 import { useLibraries } from '@/api/queries/libraries'
+import { isBrowsable } from '@/domain/library'
+import { NAV_HOME } from '@/domain/prefs'
 
+// Full header height. Active: the blue of the page's background glow; hover: the light-blue ring used on tiles.
 const LINK = ({ isActive }: { isActive: boolean }) =>
-  `rounded px-2 py-1 text-sm whitespace-nowrap ${isActive ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-100'}`
+  `flex items-center px-3 text-sm font-bold whitespace-nowrap ring-accent-400 ring-inset transition hover:ring-2 focus-visible:ring-2 focus-visible:outline-none ${
+    isActive ? 'bg-[#00A4DC]/22 text-white' : 'text-neutral-400 hover:text-neutral-100'
+  }`
 
 /** Header navigation: Home + one link per video library. */
 export function LibraryNav() {
   const libraries = useLibraries()
-  const browsable = (libraries.data ?? []).filter((l) => ['tvshows', 'movies', 'boxsets', 'homevideos', 'other'].includes(l.type))
+  // Per-link text colour from Settings → Display; unset links keep the default grey / white.
+  const { navColors } = usePref('ui').value
+  const color = (key: string) => (navColors[key] ? { color: navColors[key] } : undefined)
+  const browsable = (libraries.data ?? []).filter(isBrowsable)
   return (
-    <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-      <NavLink to="/" end className={LINK}>
+    <nav className="flex min-w-0 self-stretch overflow-x-auto [scrollbar-width:none]">
+      <NavLink to="/" end className={LINK} style={color(NAV_HOME)}>
         Home
       </NavLink>
       {browsable.map((library) => (
-        <NavLink key={library.id} to={`/library/${library.id}`} className={LINK}>
+        <NavLink key={library.id} to={`/library/${library.id}`} className={LINK} style={color(library.id)}>
           {library.name}
         </NavLink>
       ))}

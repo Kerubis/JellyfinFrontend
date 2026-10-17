@@ -1,11 +1,12 @@
 import { usePref } from '@/api/prefs-context'
 import { useWatchData } from '@/api/queries/home'
+import { useSetFavorite } from '@/api/queries/movies'
 import { useSetPlayed } from '@/api/queries/series'
 import type { CardMenuItem } from '@/components/CardMenu'
 import type { MediaTileActions } from '@/components/MediaTile'
 import { episodeLabel, type MediaItem } from '@/domain/media'
 import { playTarget, seasonWatch, watchIndex, type SeriesWatch } from '@/domain/watchIndex'
-import { seriesPath } from '@/features/home/links'
+import { itemPath, seriesPath } from '@/features/home/links'
 import { usePlay } from '@/features/player/player-context'
 import { useFollowing } from '@/hooks/useFollowing'
 import { useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
@@ -19,11 +20,13 @@ export type MediaActions = MediaTileActions & {
  * The standard tile actions for any item, so every grid, row and search result behaves the same:
  * - series: play next episode · ✓ whole series · ⋯ open series, Currently Watching, follow
  * - season: play next episode of the season · ✓ whole season · ⋯ open series
- * - episode / movie: play it · ✓ that item · ⋯ open series (episodes)
+ * - episode: play it · ✓ that item · ⋯ open series
+ * - movie: play it · ✓ that item · ⋯ details, play from start (when started), favorite
  */
 export function useMediaActions(item: MediaItem): MediaActions {
   const play = usePlay()
   const setPlayed = useSetPlayed()
+  const setFavorite = useSetFavorite()
   const { played, unplayed } = useWatchData()
   const following = useFollowing()
   const { hide } = useHiddenFromWatching()
@@ -104,6 +107,13 @@ export function useMediaActions(item: MediaItem): MediaActions {
           label: item.name,
           onToggle: () => setPlayed.mutate({ itemId: item.id, played: !item.played, episodes: [] }),
         },
+        menu: [
+          { label: 'Open details', to: itemPath(item) },
+          ...(item.progress ? [{ label: 'Play from start', onSelect: () => play(item.id, 'beginning') }] : []),
+          item.favorite
+            ? { label: 'Remove from favorites', onSelect: () => setFavorite.mutate({ itemId: item.id, favorite: false }) }
+            : { label: 'Add to favorites', onSelect: () => setFavorite.mutate({ itemId: item.id, favorite: true }) },
+        ],
       }
     default:
       return {}

@@ -9,6 +9,7 @@ import { DashboardEditor } from '@/features/home/DashboardEditor'
 import { DeviceNameSection, ServerSection } from './DeviceServerSection'
 import { HiddenSection } from './HiddenSection'
 import { LanguageSection } from './LanguageSection'
+import { NavColorsSection } from './NavColorsSection'
 import { PlaybackDeviceSection } from './PlaybackDeviceSection'
 import { PrefsDiagnostics } from './PrefsDiagnostics'
 import { DisplayPrefsSection, PlaybackPrefsSection, SubtitlePrefsSection } from './ProfilePrefsSection'
@@ -44,6 +45,7 @@ const TABS: Tab[] = [
     content: () => (
       <>
         <DisplayPrefsSection />
+        <NavColorsSection />
         <HiddenSection />
       </>
     ),

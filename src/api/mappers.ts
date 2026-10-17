@@ -99,6 +99,7 @@ export function toMediaItem(server: Server, dto: BaseItemDto): MediaItem {
     progress: position > 0 && percent ? percent / 100 : undefined,
     lastPlayedAt: dto.UserData?.LastPlayedDate ?? undefined,
     played: dto.UserData?.Played ?? undefined,
+    favorite: dto.UserData?.IsFavorite ?? undefined,
   }
 
   if (kind === 'episode') {

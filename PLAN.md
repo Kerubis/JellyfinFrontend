@@ -343,11 +343,13 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 
 ### M12: Library browsing & search
 - [x] Header navigation: Home + one link per video library
+- [x] Header links: full header height, active = background-glow blue (`#00A4DC`/22), hover = light-blue inset ring; per-link text colour (Settings → Display → Header link colours, synced `ui.navColors` by `home` / library id, native colour picker + reset)
 - [x] Library grid (`/library/:id`): sort (name, date added / new episode for shows, year, rating, last played) + direction, watched filter, genre, year; filters live in the URL; pages of 120 loaded on scroll (no virtualization needed at ~150 items, revisit for big libraries)
 - [x] Cards: series open their page; movies/episodes play from the poster
 - [x] Global search in the header (debounced 300 ms, `/` focuses it): `/search?q=` with "Shows & movies" and "Episodes". Note: Jellyfin only matches stored titles (DanMachi → "dungeon", not "danmachi")
 - [x] Verify in the browser
 - [x] Library, search and all home rows use the shared tile overlay (play, ✓, ⋯, unwatched count) via `MediaItemCard` (D27)
+- [x] Movie tiles get a ⋯ menu: Open details, Play from start (when started), Add to / Remove from favorites (`MediaItem.favorite` from list UserData; favorite changes refresh home lists, library grids, search)
 - [x] Movie detail page (`/item/:id`): poster (play / resume, ✓, progress), year · runtime · age rating · ★ · critics, genres, tagline, description, Play / Resume / Play from start / Mark watched / Favorite, director, writers, cast with roles, studio, audio + subtitle languages, "More like this" row (`/Items/{id}/Similar`); series / episode ids redirect to their pages
 - [x] A–Z scrollbar (name sort only): fixed letter rail on the right edge that replaces the page scrollbar while shown; letters run in list order (reversed for Z→A), each letter's height proportional to its item count (min 12 px, empty letters stay at the minimum), a thumb spans the part of the list currently on screen and moves continuously (fractional row position, each letter's items spread over its rail rows up to the next letter that has items); click a letter to jump, drag to scrub. One request loads all sort names (`Fields=SortName`, no images / user data) for a letter → position index with the grid's filters; a jump loads pages up to that position first. `#` = digits, symbols, non-Latin; diacritics folded (É → E)
 - [x] Refresh button next to the library name, showing the title count. Admins start the full "Scan Media Library" task (`POST /Library/Refresh`; the per-library `POST /Items/{id}/Refresh` returns 204 but finds no new files, checked 2026-10-16), the button follows the task (`/ScheduledTasks`, % shown) and reloads all user data every 30 s and at the end. Non-admins only reload (scans need admin). Admin flag is refetched on click
@@ -355,6 +357,7 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 
 ### M13: TV / 10-foot mode & polish
 - [x] Custom page scrollbar on every page (`PageScrollbar` in Layout, native one hidden): dark rail + light Jellyfin gradient thumb, drag / click-to-jump; generic `ScrollRail` (window or any overflow element) also used for the series page's left pane; shares its look (`scrollRailStyles.ts`) with the library A–Z rail, which replaces the page rail via `useReplacePageScrollbar`
+- [x] Tile "⋯" menu always fully visible and never over its tile (portal + fixed position): room to the right → right of the tile (bottom-left at the tile's bottom-right); else room below → below (top-right at the tile's bottom-right); else → left of the tile (bottom-right at the tile's bottom-left). Menu touches the tile; one Jellyfin-violet outline around both (SVG overlay, strokes masked by both boxes, so no line where they meet). Closes on scroll / resize
 - [ ] Spatial navigation + focus styles across components
 - [ ] TV device preset (card size, UI scale, hidden sections)
 - [x] Chapters in the seek bar (gaps at chapter starts, intro amber / outro rose highlights, hover tooltip with time + chapter name)
@@ -362,13 +365,15 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 - [ ] Verify trickplay in the browser: needs "Enable trickplay image extraction" on the libraries (off on all three, 2026-10-16) and a run of "Generate Trickplay Images"
 - [ ] Performance pass (image sizes via `fillWidth`/`quality`, query caching), responsive layout
 - [x] Docker image for Unraid (D31): multi-stage `Dockerfile` (node build → nginx:alpine), `docker/nginx.conf` (SPA fallback, immutable `/assets`, no-cache entry points, gzip, `/health`), `JELLYFIN_URL` → `/config.js` at container start (app auto-connects, setup form as fallback), GitHub Actions → `ghcr.io/kerubis/jellyfinfrontend` on `v*` tags only (`latest`, `x.y.z`, `x.y`), Unraid template `unraid/jellyfin-frontend.xml` (br0, required server URL), version shown in Settings; README "Docker / Unraid"
-- [ ] First release: push `v0.2.0`, make the GHCR package public, install via the template on Unraid and verify (update flow: new tag → Unraid "Check for updates")
+- [x] Unreachable server: checked once per page load in the background (`useServerUnreachable`: no answer, or 502/503/504 from a proxy in between, e.g. the Vite dev proxy; other HTTP errors don't count) → setup screen with the old address (Retry / change); profiles are kept since they belong to the server id, not the address. A preset `JELLYFIN_URL` that differs from the failed address is tried automatically
+- [x] Plain-HTTP fix: device id without `crypto.randomUUID` (secure contexts only)
+- [x] First release: push `v0.2.0`, make the GHCR package public, install via the template on Unraid and verify (update flow: new tag → Unraid "Check for updates")
 
 ---
 
 ## 5. Open questions
 
-- [~] **Server URL, Jellyfin version** (≥10.10 needed for media segments), test user / libraries → fill into CLAUDE.md. Done: `http://172.16.100.228:8096`, v12.2.0. Still open: test user / libraries
+- [~] **Server URL, Jellyfin version** (≥10.10 needed for media segments), test user / libraries → fill into CLAUDE.md. Done: `http://172.16.100.12:8096` (was .228 until 2026-10-17), v12.2.0. Still open: test user / libraries
 - [ ] **Server: NVENC/CUDA hardware encoding fails** (`CUDA_ERROR_NO_DEVICE` in the FFmpeg log, 2026-10-15), so every real transcode returns HTTP 500 (e.g. American Made: DTS-HD audio + forced PGS subtitle). Direct play/remux is unaffected. Fix GPU access for the Jellyfin container, or switch hardware acceleration off until then
 - [ ] Segment provider: none installed (checked 2026-10-15: no plugin, `/MediaSegments` empty). The app falls back to chapter names; installing e.g. Intro Skipper would cover files without chapters
 - [x] **Following**: decided: separate list in prefs (`following.followed`), favorites stay independent. "Import favorites" can come later.

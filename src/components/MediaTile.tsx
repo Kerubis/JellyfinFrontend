@@ -73,7 +73,10 @@ export function MediaTile(props: Props) {
         </span>
       )}
       {onPlay && !onSelect && <PlayOverlay />}
-      <span className={`pointer-events-none absolute inset-0 ${round} ring-accent-400 ring-inset transition ${selected ? 'ring-2' : 'group-hover:ring-2'}`} />
+      {/* Hover / selected ring; hidden while the ⋯ menu is open (it draws its own outline around tile + menu). */}
+      <span
+        className={`pointer-events-none absolute inset-0 ${round} ring-accent-400 ring-inset transition group-has-[[aria-expanded=true]]:hidden ${selected ? 'ring-2' : 'group-hover:ring-2'}`}
+      />
     </div>
   )
 
@@ -105,7 +108,7 @@ export function MediaTile(props: Props) {
             aria-label={playLabel ?? 'Play'}
             className="group/play pointer-events-auto rounded-full opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none"
           >
-            <PlayCircle pulse="self" />
+            <PlayCircle trigger="self" />
           </button>
         </div>
       )}

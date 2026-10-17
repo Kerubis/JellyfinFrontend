@@ -28,6 +28,8 @@ export type MediaItem = {
   lastPlayedAt?: string
   /** Watched flag from the list's UserData (reliable enough for movies; series/episodes use the watch lists, D15). */
   played?: boolean
+  /** Marked as favorite (list UserData). */
+  favorite?: boolean
   /** ISO timestamp of when the item was added to the server. */
   dateCreated?: string
   /** When the item or (for series/seasons) its newest content was added; for "recently added" sorting. */

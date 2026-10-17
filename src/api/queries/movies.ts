@@ -73,7 +73,8 @@ export function useSetFavorite() {
     },
     onSettled: (_data, _error, { itemId }) => {
       void queryClient.invalidateQueries({ queryKey: ['user', account.userId, 'movie', itemId] })
-      void queryClient.invalidateQueries({ queryKey: ['user', account.userId, 'list', 'favorites'] })
+      // Tiles show the flag in their menu: home lists, library grids and search results.
+      for (const key of ['list', 'libraryItems', 'search']) void queryClient.invalidateQueries({ queryKey: ['user', account.userId, key] })
     },
   })
 }
