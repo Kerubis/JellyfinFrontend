@@ -18,7 +18,11 @@ export function QuickConnectPanel({ server }: { server: Server }) {
             In another Jellyfin app where you're signed in, open <em>Quick Connect</em> and enter:
           </p>
           <p className="text-center font-mono text-3xl tracking-[0.3em] text-accent-300">{qc.code}</p>
-          <p className="text-center text-xs text-neutral-500">Waiting for approval…</p>
+          <p role="status" className="flex items-center justify-center gap-2 text-xs text-neutral-400">
+            {/* Same spinner as the player's loading state, small; motion-reduce keeps it still. */}
+            <span aria-hidden className="size-3.5 animate-spin rounded-full border-2 border-white/15 border-t-accent-400 motion-reduce:animate-none" />
+            Waiting for approval…
+          </p>
           <Button variant="ghost" onClick={qc.cancel}>
             Cancel
           </Button>

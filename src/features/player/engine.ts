@@ -416,7 +416,11 @@ export class PlayerEngine {
     if (this.state.status === 'idle' || this.state.limitReached) return
     this.video?.pause()
     window.clearTimeout(this.upNextTimer)
-    this.set({ limitReached: reason, upNext: undefined })
+    this.prefetched = null
+    // Stop for real: the position is reported (next time resumes there) and the stream released. The state
+    // (item + message) stays so the overlay can show why; its Close button resets the player.
+    void this.teardown()
+    this.set({ limitReached: reason, upNext: undefined, status: 'paused' })
   }
 
   private async play(itemId: string, startAt: StartAt) {

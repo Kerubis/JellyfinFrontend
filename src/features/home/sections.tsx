@@ -1,23 +1,18 @@
 import { usePref } from '@/api/prefs-context'
-import {
-  useCurrentlyWatching,
-  useFollowedSeries,
-  useItemList,
-  useNewEpisodes,
-  useWatchData,
-  type ItemListKind,
-  type NewEpisodeItem,
-} from '@/api/queries/home'
+import { Link } from 'react-router'
+import { useCurrentlyWatching, useItemList, useNewEpisodes, useNotWatched, useWatchData, type ItemListKind, type NewEpisodeItem } from '@/api/queries/home'
+import { useLibraries } from '@/api/queries/libraries'
 import { useSetPlayed } from '@/api/queries/series'
 import { CardGrid, CardRow, PosterCard } from '@/components/cards'
 import type { SeriesEntry } from '@/domain/currentlyWatching'
 import { DEFAULT_NEW_DAYS, sectionLimit, sectionTitle, type DashboardSection } from '@/domain/dashboard'
+import { isBrowsable, type Library } from '@/domain/library'
 import { episodeLabel, episodeRangeLabel, groupBySeries, type MediaItem } from '@/domain/media'
 import { MediaCaption } from '@/features/media/MediaCaption'
 import { MediaItemCard } from '@/features/media/MediaItemCard'
 import { useMediaActions } from '@/features/media/useMediaActions'
 import { usePlay } from '@/features/player/player-context'
-import { useAutoUnhide, useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
+import { useRemovedListMaintenance } from '@/hooks/useHiddenFromWatching'
 import { itemPath, seriesPath } from './links'
 import { Section } from './Section'
 
@@ -31,7 +26,7 @@ function seriesItem(seriesId: string, series: MediaItem | undefined): MediaItem 
 }
 
 function SeriesWatchingCard({ entry, series, showSpoilers }: { entry: SeriesEntry; series?: MediaItem; showSpoilers: boolean }) {
-  // Standard series menu (open, Currently Watching, follow); play and ✓ act on the next episode.
+  // Standard series menu (open, remove from Currently Watching); play and ✓ act on the next episode.
   const { menu } = useMediaActions(seriesItem(entry.seriesId, series))
   const play = usePlay()
   const setPlayed = useSetPlayed()
@@ -56,12 +51,11 @@ function SeriesWatchingCard({ entry, series, showSpoilers }: { entry: SeriesEntr
 }
 
 function MovieWatchingCard({ movie }: { movie: MediaItem }) {
-  const { menu = [], ...actions } = useMediaActions(movie)
-  const { hide } = useHiddenFromWatching()
+  // The standard movie menu includes "Remove from Currently Watching".
+  const actions = useMediaActions(movie)
   return (
     <PosterCard
       {...actions}
-      menu={[...menu, { label: 'Remove from Currently Watching', onSelect: () => hide(movie.id), danger: true }]}
       caption={<MediaCaption item={movie} />}
       to={itemPath(movie)}
       title={movie.name}
@@ -74,7 +68,7 @@ function MovieWatchingCard({ movie }: { movie: MediaItem }) {
 function CurrentlyWatchingSection({ section }: SectionProps) {
   const { cardSize, showSpoilers } = usePref('ui').value
   const watching = useCurrentlyWatching(section.options.days ?? DEFAULT_NEW_DAYS)
-  useAutoUnhide()
+  useRemovedListMaintenance()
   const { isPending, error } = watching
   const items = capped(watching.items, sectionLimit(section))
   return (
@@ -84,7 +78,7 @@ function CurrentlyWatchingSection({ section }: SectionProps) {
       items={items}
       isPending={isPending}
       error={error}
-      emptyText="Nothing in progress. Start a series or movie (or follow a series) and it shows up here."
+      emptyText="Nothing in progress. Start a show or movie and it shows up here."
       render={(visible) => (
         <CardGrid size={cardSize} variant="poster">
           {visible.map(({ entry, series }) =>
@@ -101,7 +95,7 @@ function CurrentlyWatchingSection({ section }: SectionProps) {
 }
 
 function NewEpisodesCard({ group, series, isNew, showSpoilers }: NewEpisodeItem & { showSpoilers: boolean }) {
-  // Standard series menu; play starts the first new episode, ✓ marks the new episodes watched.
+  // Standard series menu (incl. "Back to Currently Watching"); play starts the first unwatched episode, ✓ marks them watched.
   const { menu } = useMediaActions(seriesItem(group.seriesId, series))
   const play = usePlay()
   const setPlayed = useSetPlayed()
@@ -130,7 +124,7 @@ function NewEpisodesCard({ group, series, isNew, showSpoilers }: NewEpisodeItem 
 
 function NewEpisodesSection({ section }: SectionProps) {
   const { cardSize, showSpoilers } = usePref('ui').value
-  // No `days` option = every unwatched episode of started shows; the NEW badge keeps the default window.
+  // No `days` option = every unwatched episode; the NEW badge keeps the default window.
   const newEpisodes = useNewEpisodes(section.options.days, DEFAULT_NEW_DAYS)
   const { isPending, error } = newEpisodes
   const items = capped(newEpisodes.items, sectionLimit(section))
@@ -141,7 +135,7 @@ function NewEpisodesSection({ section }: SectionProps) {
       items={items}
       isPending={isPending}
       error={error}
-      emptyText="No unwatched episodes for the shows you're watching."
+      emptyText="Shows you remove from Currently Watching wait here while they have unwatched episodes."
       render={(visible) => (
         <CardRow size={cardSize} variant="poster">
           {visible.map(({ group, series, isNew }) => (
@@ -153,19 +147,36 @@ function NewEpisodesSection({ section }: SectionProps) {
   )
 }
 
-function FollowingSection({ section }: SectionProps) {
+/** Not watched: one row per library (all browsable ones, or the section's selection). */
+function NotWatchedSection({ section }: SectionProps) {
+  const libraries = useLibraries()
+  const selected = section.options.libraryIds ?? []
+  const shown = (libraries.data ?? []).filter((l) => isBrowsable(l) && (selected.length === 0 || selected.includes(l.id)))
+  return (
+    <>
+      {shown.map((library) => (
+        <NotWatchedRow key={library.id} section={section} library={library} />
+      ))}
+    </>
+  )
+}
+
+function NotWatchedRow({ section, library }: SectionProps & { library: Library }) {
   const { cardSize } = usePref('ui').value
-  const followed = useFollowedSeries()
-  const { isPending, error } = followed
-  const items = capped(followed.items, sectionLimit(section))
+  const notWatched = useNotWatched(library.id, sectionLimit(section))
   return (
     <Section
-      title={sectionTitle(section)}
+      title={`${sectionTitle(section)} · ${library.name}`}
       hideWhenEmpty={section.options.hideWhenEmpty}
-      items={items}
-      isPending={isPending}
-      error={error}
-      emptyText="You're not following any series yet."
+      items={notWatched.items}
+      isPending={notWatched.isPending}
+      error={notWatched.error}
+      emptyText="Everything here has been watched or started."
+      action={
+        <Link to={`/library/${library.id}?watched=unwatched`} className="text-xs text-accent-400 hover:underline">
+          Show all
+        </Link>
+      }
       render={(visible) => (
         <CardRow size={cardSize} variant="poster">
           {visible.map((item) => (
@@ -178,10 +189,8 @@ function FollowingSection({ section }: SectionProps) {
 }
 
 const LIST_EMPTY: Record<ItemListKind, string> = {
-  continueWatching: 'Nothing started.',
   recentlyAdded: 'Nothing added recently.',
   favorites: 'No favorites yet.',
-  unwatchedMovies: 'No unwatched movies.',
 }
 
 function ItemListSection({ section, kind }: SectionProps & { kind: ItemListKind }) {
@@ -225,12 +234,10 @@ export function DashboardSectionView({ section }: SectionProps) {
       return <CurrentlyWatchingSection section={section} />
     case 'newEpisodes':
       return <NewEpisodesSection section={section} />
-    case 'following':
-      return <FollowingSection section={section} />
-    case 'continueWatching':
+    case 'notWatched':
+      return <NotWatchedSection section={section} />
     case 'recentlyAdded':
     case 'favorites':
-    case 'unwatchedMovies':
       return <ItemListSection section={section} kind={section.type} />
   }
 }

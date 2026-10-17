@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Link } from 'react-router'
 import { usePref } from '@/api/prefs-context'
+import { useCurrentUser } from '@/api/queries/users'
 import { useSession, useSignedIn } from '@/api/session-context'
 import { Avatar } from '@/components/Avatar'
 
@@ -13,6 +14,7 @@ export function ProfileMenu() {
   const menuRef = useRef<HTMLDetailsElement>(null)
   const others = accounts.filter((a) => a.userId !== account.userId)
   const { kidMode } = usePref('safety').value
+  const isAdmin = !!useCurrentUser().data?.isAdmin
 
   function run(action: () => void) {
     menuRef.current?.removeAttribute('open')
@@ -36,6 +38,11 @@ export function ProfileMenu() {
             <Link to="/settings" className={ITEM} onClick={() => menuRef.current?.removeAttribute('open')}>
               Settings
             </Link>
+            {isAdmin && (
+              <Link to="/settings/server" className={ITEM} onClick={() => menuRef.current?.removeAttribute('open')}>
+                Administration
+              </Link>
+            )}
             <hr className="my-1 border-neutral-800" />
             {others.map((a) => (
               <button key={a.userId} type="button" className={ITEM} onClick={() => run(() => switchAccount(a.userId))}>

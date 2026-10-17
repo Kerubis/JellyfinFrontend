@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { usePref } from '@/api/prefs-context'
+import { useWriteThrough } from '@/api/queries/account'
 import { useLibraries } from '@/api/queries/libraries'
 import { useItemsByIds } from '@/api/queries/items'
 import { Button } from '@/components/Button'
 import { SelectField } from '@/components/form'
-import type { PartialRule, SubtitleMode } from '@/domain/tracks'
+import { jellyfinLanguagePatch, type PartialRule, type SubtitleMode } from '@/domain/tracks'
 import { languageName, parseLanguageList } from '@/lib/languages'
 
 const MODES: { value: SubtitleMode; label: string }[] = [
@@ -66,6 +67,7 @@ function RuleFields({ rule, inheritLabel, onChange }: { rule: PartialRule; inher
 /** Audio/subtitle language defaults: profile-wide, per library, and what was remembered per series. */
 export function LanguageSection() {
   const languages = usePref('languages')
+  const writeThrough = useWriteThrough()
   const libraries = useLibraries()
   const { global, libraries: perLibrary } = languages.profile
   const videoLibraries = (libraries.data ?? []).filter((l) => l.type === 'tvshows' || l.type === 'movies' || l.type === 'other')
@@ -75,9 +77,17 @@ export function LanguageSection() {
       <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">Languages</h2>
       <p className="text-[11px] text-neutral-500">
         Codes like <code>jpn, eng, deu</code> (or <code>ja, en, de</code>), most preferred first. Empty fields use the next level:
-        library → profile → your Jellyfin user settings → the file's defaults. Picking a track in the player is remembered per series.
+        library → profile → the file's defaults. Picking a track in the player is remembered per series. The profile setting is
+        also saved to your Jellyfin user (first language only), so other Jellyfin apps use it too.
       </p>
-      <RuleFields rule={global} inheritLabel="Jellyfin setting" onChange={(rule) => languages.update({ global: rule })} />
+      <RuleFields
+        rule={global}
+        inheritLabel="Jellyfin setting"
+        onChange={(rule) => {
+          writeThrough(jellyfinLanguagePatch(global, rule))
+          languages.update({ global: rule })
+        }}
+      />
 
       {videoLibraries.map((library) => (
         <details key={library.id} className="rounded border border-neutral-800 px-3 py-2" open={!!perLibrary[library.id]}>

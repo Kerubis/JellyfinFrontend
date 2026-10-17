@@ -3,10 +3,8 @@ import { useParams, useSearchParams } from 'react-router'
 import { errorMessage } from '@/api/errors'
 import { usePref } from '@/api/prefs-context'
 import { useLibraries } from '@/api/queries/libraries'
-import { useLibraryFilters, useLibraryItems, useLibraryLetters, useRefreshLibrary } from '@/api/queries/library'
-import { useCurrentUser } from '@/api/queries/users'
+import { useLibraryFilters, useLibraryItems, useLibraryLetters } from '@/api/queries/library'
 import { CardGrid } from '@/components/cards'
-import { RefreshIcon } from '@/components/icons'
 import { DEFAULT_ORDER, libraryQueryParams, parseLibraryQuery, type LibraryQuery } from '@/domain/libraryQuery'
 import { MediaItemCard } from '@/features/media/MediaItemCard'
 import { useInView } from '@/hooks/useInView'
@@ -35,9 +33,6 @@ export function LibraryPage() {
   const items = useLibraryItems(library, query)
   const filters = useLibraryFilters(library)
   const letters = useLibraryLetters(library, query)
-  const refresh = useRefreshLibrary(library)
-  const me = useCurrentUser()
-  const isAdmin = !!me.data?.isAdmin
 
   const update = (patch: Partial<LibraryQuery>) => setParams(libraryQueryParams({ ...query, ...patch }), { replace: true })
 
@@ -64,25 +59,7 @@ export function LibraryPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold">{library.name}</h1>
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-xs text-neutral-400 hover:border-accent-500 hover:text-white disabled:opacity-60"
-          title={
-            refresh.progress !== undefined
-              ? `Scanning all libraries… ${Math.round(refresh.progress)}%`
-              : isAdmin
-                ? 'Scan all libraries for new files and reload'
-                : 'Reload library (scanning for new files needs an admin account)'
-          }
-          disabled={refresh.isPending}
-          // Fresh admin flag: a role change on the server should work without a page reload.
-          onClick={() => void me.refetch().then((r) => refresh.mutate(!!r.data?.isAdmin))}
-        >
-          <RefreshIcon className={`size-3.5 ${refresh.isPending || (items.isFetching && !isFetchingNextPage) ? 'animate-spin' : ''}`} />
-          {total ?? '…'}
-          {refresh.progress !== undefined && <span className="text-accent-400">· {Math.round(refresh.progress)}%</span>}
-        </button>
-        {refresh.isError && <span className="text-xs text-red-400">{errorMessage(refresh.error)}</span>}
+        {total !== undefined && <span className="text-xs text-neutral-500">{total}</span>}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <select

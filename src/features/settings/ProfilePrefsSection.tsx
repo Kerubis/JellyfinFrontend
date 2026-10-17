@@ -1,6 +1,8 @@
 import { usePref } from '@/api/prefs-context'
+import { useWriteThrough } from '@/api/queries/account'
 import { CheckboxField, NumberField, SelectField } from '@/components/form'
 import { SKIP_LIMITS, type CardSize, type PlaybackPrefs, type SkipMode } from '@/domain/prefs'
+import type { TimeFormat } from '@/lib/time'
 import { LibrarySkipTimes } from './LibrarySkipTimes'
 
 const SKIP_OPTIONS: { value: SkipMode; label: string }[] = [
@@ -21,6 +23,12 @@ const CARD_SIZES: { value: CardSize; label: string }[] = [
   { value: 'md', label: 'Medium' },
 ]
 
+const TIME_FORMATS: { value: TimeFormat; label: string }[] = [
+  { value: 'auto', label: 'Automatic (browser language)' },
+  { value: '24', label: '24-hour (20:30)' },
+  { value: '12', label: '12-hour (8:30 PM)' },
+]
+
 const BACKGROUNDS = [
   { value: '0', label: 'None (shadow only)' },
   { value: '0.4', label: 'Light' },
@@ -28,19 +36,26 @@ const BACKGROUNDS = [
   { value: '0.85', label: 'Dark' },
 ]
 
-
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="text-sm font-semibold tracking-wide text-neutral-400 uppercase">{children}</h2>
 }
 
 export function PlaybackPrefsSection() {
   const playback = usePref('playback')
+  const writeThrough = useWriteThrough()
   const p = playback.value
 
   return (
     <section className="flex flex-col gap-2">
       <SectionTitle>Playback</SectionTitle>
-      <CheckboxField label="Autoplay next episode" checked={p.autoplayNext} onChange={(v) => playback.update({ autoplayNext: v })} />
+      <CheckboxField
+        label="Autoplay next episode"
+        checked={p.autoplayNext}
+        onChange={(v) => {
+          playback.update({ autoplayNext: v })
+          writeThrough({ EnableNextEpisodeAutoPlay: v })
+        }}
+      />
       <NumberField
         label="Countdown before next episode"
         value={p.autoplayCountdownSeconds}
@@ -152,6 +167,12 @@ export function DisplayPrefsSection() {
           const { cardSize: _removed, ...rest } = ui.override ?? {}
           ui.setOverride(on ? { ...rest, cardSize: ui.profile.cardSize } : rest)
         }}
+      />
+      <SelectField
+        label="Time format"
+        value={ui.value.timeFormat}
+        options={TIME_FORMATS}
+        onChange={(timeFormat) => ui.update({ timeFormat })}
       />
       <CheckboxField
         label="Show spoilers (thumbnails and descriptions of unwatched episodes)"

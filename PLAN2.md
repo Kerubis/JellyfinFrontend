@@ -7,3 +7,11 @@ Milestones moved out of [PLAN.md](PLAN.md) because they aren't important right n
 - [ ] Bridge `Playstate` / `GeneralCommand` / `Play` messages → command dispatcher
 - [ ] Verify with HA's Jellyfin integration: play/pause/seek/next/volume/track, state shown correctly
 - [ ] Document HA setup in README
+
+### Sonarr / Radarr → Jellyfin library updates
+New files on the network shares aren't noticed by Jellyfin's real-time monitoring (all libraries are network storage, checked 2026-10-17), so new episodes only show up after a full scan (fast when nothing is new, slow when many files are new).
+- [ ] Sonarr: Settings → Connect → add "Emby / Jellyfin", enable "Update library" on import / upgrade / rename
+- [ ] Radarr: same
+- [ ] Check path mapping: Sonarr/Radarr report their own file paths; if they differ from Jellyfin's (`/tv/anime`, `/tv/1080p`, `/tv/2160p`, `/movies`), set up the path mapping in the connection
+- [ ] Verify: a new episode appears in Jellyfin within ~1–2 min without a scan (the notification is `POST /Library/Media/Updated`; Jellyfin waits `LibraryMonitorDelay` = 60 s before checking the folder)
+- [ ] Fallback if that's not possible: a per-library "check for new files" button in our app sending the same notification for the library's folders (unverified whether Jellyfin then picks up new files reliably; test when the next episode lands)

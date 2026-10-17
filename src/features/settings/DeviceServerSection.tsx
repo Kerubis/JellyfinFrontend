@@ -47,10 +47,6 @@ export function ServerSection() {
     <section className="flex flex-col gap-2">
       <h2 className={TITLE}>Server</h2>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-neutral-500">Name</dt>
-        <dd>{server.name}</dd>
-        <dt className="text-neutral-500">Version</dt>
-        <dd>{server.version}</dd>
         <dt className="text-neutral-500">Address</dt>
         <dd className="break-all">{server.url}</dd>
         <dt className="text-neutral-500">Signed in as</dt>

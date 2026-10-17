@@ -16,7 +16,7 @@ import { usePref } from '@/api/prefs-context'
 import { watchKeys } from '@/api/queries/home'
 import { useSignedIn } from '@/api/session-context'
 import { skipSeconds } from '@/domain/prefs'
-import { hasLimits, localDate, playbackBlock, usedSecondsToday, type SafetyUsage } from '@/domain/safety'
+import { hasLimits, inBedtime, localDate, playbackBlock, secondsLeftToday, usedSecondsToday, type SafetyUsage } from '@/domain/safety'
 import { chooseTracks, memoryFor, resolveRule } from '@/domain/tracks'
 import { useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
 import { detectCapabilities } from '@/lib/codecs'
@@ -153,8 +153,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           updateUsage(usageRef.current)
         }
       }
-      const budgetUsed =
-        safetyRef.current.dailyMinutes > 0 && usedSecondsToday(usageRef.current, now) >= safetyRef.current.dailyMinutes * 60
+      const budgetUsed = secondsLeftToday(safetyRef.current, usageRef.current, now) === 0
       if (budgetUsed) {
         if (unsaved > 0) updateUsage(usageRef.current)
         unsaved = 0
@@ -166,6 +165,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (unsaved > 0) updateUsage(usageRef.current)
     }
   }, [engine, limited])
+
+  // Bedtime: playback stops the moment it starts (checked every second while a profile with a bedtime watches).
+  const bedtimeOn = safety.bedtime.enabled
+  useEffect(() => {
+    if (!bedtimeOn) return
+    const timer = window.setInterval(() => {
+      const status = engine.getState().status
+      if (status !== 'playing' && status !== 'paused' && status !== 'loading') return
+      const now = new Date()
+      if (inBedtime(safetyRef.current.bedtime, now)) engine.enforceLimit(playbackBlock(safetyRef.current, usageRef.current, now) ?? "It's bedtime.")
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [engine, bedtimeOn])
 
   // Stop (and report) when the profile switches or the app unmounts.
   useEffect(() => () => engine.dispatch({ type: 'stop' }), [engine])

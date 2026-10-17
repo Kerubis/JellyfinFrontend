@@ -11,6 +11,8 @@ export type Session = {
   /** Forgets the server and every profile stored for it. */
   forgetServer: () => void
   signIn: (account: SignedInAccount) => void
+  /** Updates a stored profile's display data (e.g. a new avatar). */
+  updateAccount: (userId: string, patch: Partial<Pick<Account, 'name' | 'avatarUrl'>>) => void
   /** Switches to a stored profile; null returns to the profile picker. */
   switchAccount: (userId: string | null) => void
   /** `lockPicker`: remembered profiles need their password again (used when a kid profile signs out). */

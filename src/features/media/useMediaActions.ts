@@ -1,4 +1,3 @@
-import { usePref } from '@/api/prefs-context'
 import { useWatchData } from '@/api/queries/home'
 import { useSetFavorite } from '@/api/queries/movies'
 import { useSetPlayed } from '@/api/queries/series'
@@ -8,7 +7,6 @@ import { episodeLabel, type MediaItem } from '@/domain/media'
 import { playTarget, seasonWatch, watchIndex, type SeriesWatch } from '@/domain/watchIndex'
 import { itemPath, seriesPath } from '@/features/home/links'
 import { usePlay } from '@/features/player/player-context'
-import { useFollowing } from '@/hooks/useFollowing'
 import { useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
 
 export type MediaActions = MediaTileActions & {
@@ -18,19 +16,18 @@ export type MediaActions = MediaTileActions & {
 
 /**
  * The standard tile actions for any item, so every grid, row and search result behaves the same:
- * - series: play next episode · ✓ whole series · ⋯ open series, Currently Watching, follow
- * - season: play next episode of the season · ✓ whole season · ⋯ open series
- * - episode: play it · ✓ that item · ⋯ open series
- * - movie: play it · ✓ that item · ⋯ details, play from start (when started), favorite
+ * - series: play next episode · ✓ whole series · ⋯ open series, remove from / back to Currently Watching
+ * - season: play next episode of the season · ✓ whole season · ⋯ same as the series
+ * - episode: play it · ✓ that item · ⋯ same as the series
+ * - movie: play it · ✓ that item · ⋯ details, play from start (when started), favorite, remove from / back to
+ *   Currently Watching
  */
 export function useMediaActions(item: MediaItem): MediaActions {
   const play = usePlay()
   const setPlayed = useSetPlayed()
   const setFavorite = useSetFavorite()
-  const { played, unplayed } = useWatchData()
-  const following = useFollowing()
-  const { hide } = useHiddenFromWatching()
-  const followed = usePref('following').value
+  const { played, unplayed, resumable } = useWatchData()
+  const removed = useHiddenFromWatching()
 
   const index = played && unplayed ? watchIndex(played, unplayed) : undefined
   const seriesId = item.kind === 'series' ? item.id : item.seriesId
@@ -44,19 +41,20 @@ export function useMediaActions(item: MediaItem): MediaActions {
     }
   }
 
+  /** Remove from / back to Currently Watching, for an entry that qualifies for it (§3.9). */
+  const watchingEntry = (id: string, qualifies: boolean): CardMenuItem[] =>
+    removed.isHidden(id)
+      ? [{ label: 'Back to Currently Watching', onSelect: () => removed.unhide(id) }]
+      : qualifies
+        ? [{ label: 'Remove from Currently Watching', onSelect: () => removed.hide(id), danger: true }]
+        : []
+
   const seriesMenu = (): CardMenuItem[] => {
     if (!seriesId) return []
     const watch = index?.series(seriesId)
-    const hidden = followed.hidden.some((h) => h.id === seriesId)
-    const inProgress = !!watch && watch.unplayed.length > 0 && (watch.played.length > 0 || followed.followed.includes(seriesId)) && !hidden
-    const isFollowed = following.isFollowed(seriesId)
-    return [
-      { label: 'Open series', to: seriesPath(seriesId) },
-      inProgress
-        ? { label: 'Remove from Currently Watching', onSelect: () => hide(seriesId), danger: true }
-        : { label: 'Add to Currently Watching', onSelect: () => following.addToCurrentlyWatching(seriesId) },
-      { label: isFollowed ? 'Unfollow' : 'Follow', onSelect: () => following.setFollowed(seriesId, !isFollowed) },
-    ]
+    const started = !!watch && watch.played.length > 0 && watch.unplayed.length > 0
+    const hasPosition = !!resumable?.some((item) => item.seriesId === seriesId)
+    return [{ label: 'Open series', to: seriesPath(seriesId) }, ...watchingEntry(seriesId, started || hasPosition)]
   }
 
   switch (item.kind) {
@@ -113,6 +111,7 @@ export function useMediaActions(item: MediaItem): MediaActions {
           item.favorite
             ? { label: 'Remove from favorites', onSelect: () => setFavorite.mutate({ itemId: item.id, favorite: false }) }
             : { label: 'Add to favorites', onSelect: () => setFavorite.mutate({ itemId: item.id, favorite: true }) },
+          ...watchingEntry(item.id, !!item.progress),
         ],
       }
     default:

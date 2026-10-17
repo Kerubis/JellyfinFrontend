@@ -1,5 +1,10 @@
 import axios from 'axios'
 
+/** HTTP status of a failed request, if the server answered. */
+export function httpStatus(error: unknown): number | undefined {
+  return axios.isAxiosError(error) ? error.response?.status : undefined
+}
+
 export function isUnauthorized(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 401
 }

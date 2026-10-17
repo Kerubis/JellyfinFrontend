@@ -5,7 +5,6 @@ import { PlayIcon, PlayOverlay } from '@/components/PlayOverlay'
 import { DEFAULT_NEW_DAYS } from '@/domain/dashboard'
 import { episodeLabel, type EpisodeRef } from '@/domain/media'
 import type { SeriesDetails } from '@/domain/series'
-import { useFollowing } from '@/hooks/useFollowing'
 import { useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
 
 type Props = {
@@ -27,12 +26,9 @@ function metaLine(series: SeriesDetails): string {
 
 export function SeriesHeader({ series, playedCount, totalCount, next, playTarget, onPlay }: Props) {
   const [expanded, setExpanded] = useState(false)
-  const following = useFollowing()
-  const { hide } = useHiddenFromWatching()
+  const removed = useHiddenFromWatching()
   const watching = useCurrentlyWatching(DEFAULT_NEW_DAYS)
   const inCurrentlyWatching = watching.items.some(({ entry }) => entry.kind === 'series' && entry.seriesId === series.id)
-  const followed = following.isFollowed(series.id)
-  const finished = totalCount > 0 && playedCount === totalCount
   const playLabel = playTarget ? `${next ? 'Play' : 'Play again'} ${episodeLabel(playTarget)}` : 'Play'
 
   return (
@@ -69,26 +65,18 @@ export function SeriesHeader({ series, playedCount, totalCount, next, playTarget
             {series.overview}
           </button>
         )}
-        <div className="mt-1 flex flex-wrap gap-2">
-          {inCurrentlyWatching ? (
-            <Button onClick={() => hide(series.id)}>Remove from Currently Watching</Button>
-          ) : (
-            <Button
-              onClick={() => following.addToCurrentlyWatching(series.id)}
-              disabled={finished}
-              title={finished ? 'All episodes watched' : 'Unhides and follows the series'}
-            >
-              Add to Currently Watching
-            </Button>
-          )}
-          <Button
-            variant={followed ? 'secondary' : 'ghost'}
-            onClick={() => following.setFollowed(series.id, !followed)}
-            title="Followed series stay in Currently Watching even without watch history"
-          >
-            {followed ? '★ Following' : '☆ Follow'}
-          </Button>
-        </div>
+        {/* Shows enter Currently Watching by being watched (§3.9); here they can only be removed or brought back. */}
+        {(inCurrentlyWatching || removed.isHidden(series.id)) && (
+          <div className="mt-1 flex flex-wrap gap-2">
+            {inCurrentlyWatching ? (
+              <Button onClick={() => removed.hide(series.id)}>Remove from Currently Watching</Button>
+            ) : (
+              <Button onClick={() => removed.unhide(series.id)} title="It sits in New Episodes while removed">
+                Back to Currently Watching
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </header>
   )

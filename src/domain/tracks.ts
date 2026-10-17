@@ -203,3 +203,30 @@ export function ruleFromJellyfin(config: {
     subtitleMode: config.SubtitleMode ? modes[config.SubtitleMode] : undefined,
   }
 }
+
+const JELLYFIN_SUBTITLE_MODES: Record<SubtitleMode, 'Default' | 'None' | 'OnlyForced' | 'Always' | 'Smart'> = {
+  default: 'Default',
+  off: 'None',
+  forced: 'OnlyForced',
+  always: 'Always',
+  smart: 'Smart',
+}
+
+/** The Jellyfin user configuration fields that mirror the profile-wide language rule. */
+export type JellyfinLanguageConfig = {
+  AudioLanguagePreference?: string
+  SubtitleLanguagePreference?: string
+  SubtitleMode?: (typeof JELLYFIN_SUBTITLE_MODES)[SubtitleMode]
+}
+
+/**
+ * What changed in the profile-wide rule, as Jellyfin user configuration (D32 write-through). Jellyfin keeps
+ * one language per kind, so the first one is written; a cleared field clears it there too.
+ */
+export function jellyfinLanguagePatch(previous: PartialRule, next: PartialRule): JellyfinLanguageConfig {
+  const patch: JellyfinLanguageConfig = {}
+  if (previous.audio?.[0] !== next.audio?.[0]) patch.AudioLanguagePreference = next.audio?.[0] ?? ''
+  if (previous.subtitles?.[0] !== next.subtitles?.[0]) patch.SubtitleLanguagePreference = next.subtitles?.[0] ?? ''
+  if (previous.subtitleMode !== next.subtitleMode) patch.SubtitleMode = JELLYFIN_SUBTITLE_MODES[next.subtitleMode ?? 'default']
+  return patch
+}

@@ -1,6 +1,7 @@
 import { Jellyfin, type Api } from '@jellyfin/sdk'
 import axios from 'axios'
 import { readString, writeString } from '@/lib/storage'
+import { appVersion } from './runtimeConfig'
 
 const DEVICE_ID_KEY = 'jff.deviceId'
 const DEVICE_NAME_KEY = 'jff.deviceName'
@@ -38,7 +39,8 @@ export function getDeviceName(): string {
 
 /** Persistent per-device identity: Jellyfin (and Home Assistant) key sessions on it. */
 export const jellyfin = new Jellyfin({
-  clientInfo: { name: 'Jellyfin Frontend', version: '0.1.0' },
+  // Shown per device in the admin overview (and Jellyfin's own dashboard).
+  clientInfo: { name: 'Jellyfin Frontend', version: appVersion },
   deviceInfo: { id: loadDeviceId(), name: getDeviceName() },
 })
 

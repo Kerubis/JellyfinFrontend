@@ -22,6 +22,8 @@ export function useQuickConnect(server: Server, onSignedIn: (account: SignedInAc
     queryFn: () => (request ? isQuickConnectApproved(server, request.secret) : false),
     enabled: !!request,
     refetchInterval: (query) => (query.state.data ? false : POLL_MS),
+    // The code gets approved on another device, so this window usually isn't focused meanwhile.
+    refetchIntervalInBackground: true,
     gcTime: 0,
   })
 
@@ -48,3 +50,4 @@ export function useQuickConnect(server: Server, onSignedIn: (account: SignedInAc
     },
   }
 }
+

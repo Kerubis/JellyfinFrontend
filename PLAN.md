@@ -41,6 +41,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(later)` designed now,
 | D29 | **One caption component** (`MediaCaption`) for the two lines under every tile: title, then movie: year · series: years · N seasons · season: Season N · N episodes · episode: S01 E05 (Currently Watching: the next episode). Year links to the item's library filtered by year (library resolved via ancestors on click, cached); season → series page with that season; episode → episode view in its series page | Same text and links everywhere; New Episodes no longer shows the episode range |
 | D30 | Soft limits live in the **kid's own synced prefs** (`safety`, written by an admin; `safetyUsage`, written by the kid's player). Kid-mode sign-out locks the profile picker instead of a PIN | Verified that admins can write other users' prefs; works across devices without our own backend. Soft by design (a kid using the API could change them) |
 | D31 | **Deployment: own Docker image on GHCR, built by GitHub Actions on `v*` tags; Unraid tracks `:latest`** (br0, own IP). Server URL is a runtime env var (`JELLYFIN_URL` → `/config.js`), not baked into the build. Browser talks to Jellyfin directly (CORS `*` on the server, checked 2026-10-16) | Unraid's update check compares the registry digest of the tag, so releases (not every push) show as updates. One image works for any server |
+| D32 | Settings live in one place (`/settings/:page`, left menu grouped Profile / This device / Administration). **Admin dashboard fully native**, no links into the official web client; plugin settings via a form generated from their JSON configuration. Overlapping profile settings are **written through** to Jellyfin's user configuration | The official frontend shouldn't be needed for anything. Write-through keeps other Jellyfin apps consistent |
+| D33 | **Currently Watching sorts by last watched** (2026-10-17), replacing the newest-episode rule: a series by its most recently played episode, movies by their own last play, followed-but-unwatched series last (newest episode first). Last-played times come from the 300 most recent plays (`useRecentlyPlayed`), not from the full played list | User preference. Series-level `LastPlayedDate` is always empty on 12.2; per-episode UserData on the full played list would cost +23 % payload and ~5× server time |
+| D34 | **Home sections partition everything unwatched** (§3.9, M18): Currently Watching (play position or started & unfinished, removable), New Episodes (removed started shows), Not watched per library. Follow, Continue Watching and Unwatched Movies removed; specials count | User decision 2026-10-17. Only the removed entries are stored (one source of truth: Jellyfin's watch state) |
 | D12 | One `deviceId` per browser, shared by all profiles on it | Stable identity for the Jellyfin dashboard / HA. To verify: switching profiles on one device doesn't revoke the other profile's token |
 
 ---
@@ -217,6 +220,63 @@ Editor: an "Edit dashboard" mode with move up/down, show/hide, options per secti
 - **Trickplay thumbnails** on the seek bar (server-generated since 10.9).
 - **Codec awareness for the HTPC**: the device profile should reflect what Chromium on Arch can really decode (HEVC/AV1 via VAAPI), to avoid unnecessary transcodes. Make it configurable per device.
 
+### 3.8 Settings & administration (proposal, 2026-10-17)
+
+**Goal:** one place for everything. The stock client splits it into "user preferences" (`#/mypreferencesmenu`) and a separate "dashboard" (`#/dashboard/…`); we put both into `/settings`, grouped by *whose* setting it is.
+
+**Layout:** `/settings/:page`. Left menu with three groups (sticky); on narrow screens it becomes a dropdown at the top. Each page is a column of sections. Admin pages are ordinary menu entries in the "Administration" group, only for admins (the server enforces it anyway); many small pages rather than few big ones, so things are easy to find. Profile menu: "Settings" plus "Administration" (admins) jumping to the first admin page.
+
+| Group | Page | Contents (today's section → new place; **new** = not built yet) |
+|---|---|---|
+| **Profile** (synced with the Jellyfin user) | Account | **new**: avatar, password, **Quick Connect "authorize a code"** (sign in the TV from the phone), sign out of all devices |
+| | Playback | autoplay / still watching / resume / speed / skip times (+ per library) / intro-outro skip (PlaybackPrefsSection) |
+| | Audio & subtitles | language rules global + per library (LanguageSection), subtitle look (SubtitlePrefsSection) |
+| | Home | dashboard editor (DashboardEditor) |
+| | Appearance | card size, spoilers, header link colours |
+| | Currently Watching | **followed shows list** (new) + hidden list (HiddenSection) |
+| | Limits | own restrictions / kid mode view (today in "Profiles" for non-admins) |
+| **This device** (localStorage) | Device | device name, server address / forget server, card-size override, sections hidden on this device, TV mode later |
+| | Playback quality | codecs / bitrate / direct play (PlaybackDeviceSection) |
+| | About | app version, server name + version, diagnostics (dev) |
+| **Administration** (admins) | Overview | **new**: server info + storage, active sessions (what plays, direct/transcode + reason, stop / message), running tasks with progress, recent activity; actions: scan all libraries, restart, shutdown |
+| | Users | list / add / delete; per user: profile, library access, Jellyfin limits (LimitsEditor), app limits (SafetyEditor), password reset, admin flag |
+| | Libraries | list, scan, add / remove folders (directory browser via `/Environment/*`), key options (real-time monitoring, trickplay, chapter images, metadata language) |
+| | Playback & transcoding | hardware acceleration + enabled codecs, tone mapping, throttling, resume thresholds, streaming bitrate limit, trickplay options |
+| | Tasks | scheduled tasks: run / stop, progress, last result, triggers |
+| | Activity & logs | activity log, server log files viewer |
+| | Plugins | installed (enable / disable / uninstall / update), catalog, repositories |
+| | Devices & API keys | devices (rename / delete), API keys (create / revoke) |
+| | Backups | list, create, restore (confirm twice) |
+| | General & branding | server name, metadata language / country, Quick Connect on/off, login disclaimer, custom CSS |
+| | Networking | ports, LAN networks, known proxies, HTTPS (read carefully: wrong values lock you out) |
+| | Library defaults | library display, metadata savers / NFO options |
+
+**Admin dashboard approach: fully native, no links into the official web client** (decided 2026-10-17). Plugin configuration: plugins ship their settings pages as HTML for the stock client, so instead we render a generated form from `GET /Plugins/{id}/Configuration` (strings, numbers, booleans, lists) and save it back with `POST`. Live TV is left out (not used on this server).
+
+**Rules for admin pages:** server config is read fresh, patched and written back whole (as with user policies); admin forms save with an explicit **Save** button (profile prefs keep auto-saving); destructive actions (delete user / library, restore backup, restart, shutdown) need a confirmation. Data layer in `src/api/admin/`, types in `src/domain/admin/`, pages in `src/features/settings/{profile,device,admin}/`.
+
+**Decided (D32):** overlapping profile settings are **written through** to Jellyfin's own user configuration (`POST /Users/Configuration`: audio / subtitle language, subtitle mode, autoplay next, remember tracks), so other Jellyfin apps follow them too. Today we only read those as a fallback.
+
+### 3.9 Home sections: one place for everything unwatched (implemented, M18)
+
+**Goal:** every show or movie with anything unwatched appears in exactly one home section; fully watched ones in none. Decided by the user; replaces the "Currently Watching" rule with follow (D33 sort order stays).
+
+| Section | Contains | Sort |
+|---|---|---|
+| **Currently Watching** | anything with a play position (episodes → their show, movies) **+** shows with ≥ 1 watched and ≥ 1 unwatched episode; every entry removable | last watched (D33) |
+| **New Episodes** | shows with ≥ 1 watched and ≥ 1 unwatched episode that are **not** in Currently Watching, i.e. the ones removed from it | newest added episode first (a new weekly episode surfaces) |
+| **Not watched** (one section per library) | shows with no watched episode and no play position; movies not watched (incl. a started movie removed from Currently Watching) | newest added first |
+
+Checked against admin's data (152 shows): 16 started & unfinished, 71 never watched with unwatched episodes, 65 finished: each show in exactly one bucket.
+
+**Precedence:** Currently Watching → (removed) → New Episodes / Not watched. Playing something of a removed entry brings it back into Currently Watching (existing un-hide rule). The "Hidden" list in Settings stays as the place to move entries back.
+
+**Goes away:** "Follow" (a never-watched show now lives in Not watched; starting an episode moves it up), the Following section and settings list, and the sections now covered: Continue Watching, Unwatched Movies. Favorites and Recently Added stay.
+
+**Decided (2026-10-17):** Follow is removed; Continue Watching and Unwatched Movies sections are removed (saved layouts drop them); **specials count** as unwatched content (a show with only unwatched season-0 episodes stays in Currently Watching / New Episodes).
+
+**Data:** all from what's loaded today (played / unplayed episode lists, resumable items, series catalog with library, recently played). Not watched per library needs the series' library (ParentId / ancestors) and an unwatched-movies query per library. Large libraries: rows are limited (section option) with a "show all" link to the library page.
+
 ---
 
 ## 4. Milestones & tasks
@@ -336,6 +396,7 @@ The order follows CLAUDE.md, with the prefs layer moved forward because the dash
 - [x] Soft limits (`domain/safety.ts`, per profile): daily watch-time budget (counted every 15 s while playing, saved per minute, synced, stops playback with a friendly screen when used up), bedtime (no new playback incl. autoplay, running episode may finish, notice 10 min before), budget notice 5 min before
 - [x] Kid mode UI: no settings route, no dashboard editing, profile menu only "Sign out"; signing out from kid mode locks the profile picker on that device (remembered profiles need password / Quick Connect until the next sign-in)
 - [x] Decided: no PIN; no "episodes per session" limit
+- [x] Bedtime stops playback when it starts (checked every second; was: running episode may finish); warning from 10 min before, last minute counts down in seconds, "no more TV after that". Limits (bedtime and daily budget) now stop for real: position reported to Jellyfin and stream released (before: only paused, position not reported)
 - [ ] Verify with a kid user (none on the server yet): kid mode, budget, bedtime, Jellyfin limits as seen by the kid
 
 ### M11: Home Assistant remote control
@@ -358,6 +419,9 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 ### M13: TV / 10-foot mode & polish
 - [x] Custom page scrollbar on every page (`PageScrollbar` in Layout, native one hidden): dark rail + light Jellyfin gradient thumb, drag / click-to-jump; generic `ScrollRail` (window or any overflow element) also used for the series page's left pane; shares its look (`scrollRailStyles.ts`) with the library A–Z rail, which replaces the page rail via `useReplacePageScrollbar`
 - [x] Tile "⋯" menu always fully visible and never over its tile (portal + fixed position): room to the right → right of the tile (bottom-left at the tile's bottom-right); else room below → below (top-right at the tile's bottom-right); else → left of the tile (bottom-right at the tile's bottom-left). Menu touches the tile; one Jellyfin-violet outline around both (SVG overlay, strokes masked by both boxes, so no line where they meet). Closes on scroll / resize
+- [x] Time format setting (Settings → Appearance: automatic / 24-hour / 12-hour, synced `ui.timeFormat`) used for every clock time (time fields, access schedule hours, bedtime, activity tooltips); `useTimeFormat` + `lib/time.ts` (format / parse incl. "8pm", "12 AM")
+- [x] Time picker in the style of Android's clock dial (`ClockDialog`): hour then minute on the dial (drag or tap, any minute), 24 h with two rings like Android (12, 1–11 outside; 00, 13–23 inside), AM / PM toggle in 12 h, arrow keys + Enter, Cancel / OK; `TimeField` keeps typing as an alternative. Replaces every `<input type="time">`. Checked in a headless browser in both modes (screenshots)
+- [x] Fix: "stopped" on page unload (reload, closing the tab, dev full reloads) was never sent: `sendBeacon` with a JSON body is refused by Chromium, so the server kept the session "playing" and saved no position. Now a `keepalive` fetch; verified (reload during playback → server logs the stop with the position). To verify in production: cross-origin keepalive request with CORS preflight
 - [ ] Spatial navigation + focus styles across components
 - [ ] TV device preset (card size, UI scale, hidden sections)
 - [x] Chapters in the seek bar (gaps at chapter starts, intro amber / outro rose highlights, hover tooltip with time + chapter name)
@@ -369,6 +433,47 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 - [x] Plain-HTTP fix: device id without `crypto.randomUUID` (secure contexts only)
 - [x] First release: push `v0.2.0`, make the GHCR package public, install via the template on Unraid and verify (update flow: new tag → Unraid "Check for updates")
 
+### M14: Settings shell & restructure (no new server features)
+- [x] `/settings/:page` routes, left menu with groups (Profile / This device; Administration once it has pages), dropdown on narrow screens, old `?tab=` links redirect
+- [x] Pages per §3.8. Profile: Account, Playback, Audio & subtitles, Home, Appearance, Currently Watching (followed + hidden lists), Limits (non-admins with limits). This device: Device & server, Playback quality, About. Administration: Users (today's limits editor; grows in M16). Old ids (`display`, `profiles`, `?tab=`) redirect
+- [x] Account page: profile picture (upload base64 to `/UserImage` like the stock client; session avatar updated), password (403 = wrong current password), Quick Connect "approve a code" (only when enabled on the server). "Sign out everywhere" moved to the admin Devices page (M17): only admins can end other devices' sessions
+- [x] About page (app + server version); profile menu gets "Administration" for admins
+- [x] Write-through (D32) on change in our settings: global audio / subtitle language (first one), subtitle mode, autoplay next → `POST /Users/Configuration` (read fresh, patch, write whole). Clearing a field clears it in Jellyfin too
+- [x] Verify M14 in the browser (avatar upload, password change, Quick Connect approve from a second device, write-through visible in the official app's settings)
+
+### M15: Admin overview, tasks, activity
+- [x] Administration pages in the settings menu (admins only): **Overview** (incl. scheduled tasks), Users, **Activity & logs**; profile menu "Administration" → Overview. Old `/settings/tasks` and `/settings/logs` redirect
+- [x] Overview: server name / version / platform / address (+ "update available", "restart needed"); scan all libraries, restart, shut down (inline confirmation, `ConfirmButton`); active devices of the last 15 min (playing first, refreshed every 5 s: title, progress, direct play / stream / transcode + reasons + hardware encoder, stop playback, send message, where the client supports it); storage per disk (server folders and libraries grouped by device, warn above 90 %); recent activity
+- [x] Scheduled tasks by category: last run (status, when, duration, error), schedule, run / stop, progress; schedule editor (daily / weekly / every N hours / on startup, add / remove; saves the whole trigger list)
+- [x] Activity log (pages of 50, user names, severity dots); log files (FFmpeg logs hidden by default) with a viewer: line filter, errors / warnings coloured, reload
+- [x] Our client reports the real app version (was a hard-coded 0.1.0) so the device list shows what each browser runs
+- [x] Verified in a headless browser against the server (all four pages, no errors / failed requests). Not exercised: restart, shutdown, stop / message (our own client doesn't accept remote commands until the Home Assistant socket work in PLAN2)
+### M16: Admin users & libraries
+- [x] Users page: list (badges admin / disabled / hidden / limited / no password, last activity), add user (name + password), user detail via `?user=`: name + account switches (admin, disabled, hidden from login screens, remote access, downloads, transcoding; saved explicitly, policy read fresh + patched), set / remove password (admins need no current one), library access & Jellyfin limits (LimitsEditor), app limits (SafetyEditor), delete (confirmation). Own admin / disabled switches and deleting yourself are blocked
+- [x] Libraries page: scan all, per library (expandable): folders (add via server folder picker `/Environment/*`, remove with confirmation), options (real-time monitoring, save artwork / NFO next to media, embedded titles, trickplay ± during scan, chapter images ± during scan, metadata language / country, refresh interval; explicit Save, other options read fresh and kept), rename, remove (confirmation); add library (name, kind, folder)
+- [x] App limit "Show the Home page" per user (`safety.showHome`, set on the user's admin page; e.g. guests): off = no Home link, `/` opens the first library, header colour setting for Home hidden; shown under the user's own Limits page
+- [x] Libraries page in two columns (libraries left, add library right)
+- [x] Per-library scan left out: `POST /Items/{id}/Refresh` doesn't pick up new files (checked 2026-10-16), so the page only offers the full scan. `EnableInternetProviders` not offered (legacy flag; metadata sources are set per type)
+- [x] Verified read-only in a headless browser (user list / detail, library card, folder picker); create / delete / save not exercised against the server
+### M17: Admin playback, plugins, devices, backups
+- [x] Generic server-settings forms: pages described as data (`configSpecs.ts`: field kind, Jellyfin key path, hints, conditional fields), one `ConfigForm` (read fresh, change only the edited paths, write back whole; explicit Save / Discard). Sources: `/System/Configuration`, named configurations, plugin configurations
+- [x] Playback & transcoding: hardware acceleration (+ VAAPI / QSV device, hardware decoding codecs, 10-bit, hardware encoding), HEVC / AV1 encoding, tone mapping, preset, CRF, threads, deinterlacing, throttling, segment deletion, subtitle extraction, down-mix boost; Resume (min / max %, min duration); Streaming (remote bitrate limit in Mbit/s); Trickplay options
+- [x] Plugins: installed (image, version, status, enable / disable, uninstall with confirmation), settings as a form generated from the plugin's JSON configuration (booleans, numbers, strings incl. hidden secrets, string / number lists; nested values read-only), catalog (search, install), repositories (enable, add, remove); restart notice with "Restart now"
+- [x] Devices & API keys: devices (app, user, last activity, this device marked) with sign out and "Sign out all other devices" (the "sign out everywhere" from M14); API keys list / create (new key shown once, select-to-copy since the clipboard API needs HTTPS) / revoke
+- [x] Backups: create (database / metadata / trickplay / subtitles), list, restore with two explicit steps
+- [x] General (server name, metadata language / country, Quick Connect, monitor delay, log retention, image encodings) & branding; Networking (ports, base URL, HTTPS, subnets, proxies, remote access + filter, discovery, UPnP, IPv6; warning + restart notice); Library defaults (display, date added, artwork naming, NFO)
+- [x] Verified read-only in a headless browser (every page, TMDb's generated form, catalog); nothing saved / installed / restored against the server
+
+### M18: Home sections rework (§3.9)
+- [x] Domain: `buildHomeSections` splits the watch state into Currently Watching / New Episodes / Not watched in one pass; checked against admin's real data (16 / 0 / 71 of 152 shows, 65 finished; no show twice; removing a started show moves it to New Episodes, a never-watched one stays in Not watched)
+- [x] Currently Watching: play position or started & unfinished (specials count; a rewatch in progress continues that episode); remove any entry (show / movie ⋯ menu, series page); last-watched sort (D33)
+- [x] New Episodes: started & unfinished shows removed from Currently Watching; newest episode first; NEW badge; "Back to Currently Watching" in the ⋯ menu and on the series page
+- [x] Not watched: section type with a library option (none = one row per browsable library), shows from the catalog + unwatched movies per library, newest added first, "Show all" → library page with the Unwatched filter
+- [x] Follow removed (menus, series page button, Following section + settings list); Continue Watching / Unwatched Movies section types removed (saved layouts drop them); dashboard pref v2 adds "Not watched" to saved layouts once
+- [x] Removed list: pref key `following` → `watching` (read from the old key until written; v1 plain-id format still migrated)
+- [x] Cleanup (`useRemovedListMaintenance`): drops entries with nothing unwatched / no position left, watched movies, items that no longer exist; only when all lists loaded without error; also brings entries back after a later play (as before)
+- [x] CLAUDE.md core rule, section descriptions, settings texts updated
+- [x] Verify in the browser: remove / bring back a show and a movie, cleanup after finishing a removed show, own custom sections from before (e.g. renamed "Not watched …" Recently Added sections) vs. the new ones
 ---
 
 ## 5. Open questions

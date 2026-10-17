@@ -66,6 +66,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setActiveUserId(next.userId)
   }, [])
 
+  const updateAccount = useCallback(
+    (userId: string, patch: Partial<Pick<Account, 'name' | 'avatarUrl'>>) =>
+      setAllAccounts((list) => list.map((a) => (a.serverId === server?.id && a.userId === userId ? { ...a, ...patch } : a))),
+    [server],
+  )
+
   const switchAccount = useCallback((userId: string | null) => setActiveUserId(userId), [])
 
   const signOut = useCallback(
@@ -83,8 +89,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   )
 
   const session = useMemo<Session>(
-    () => ({ server, accounts, account, setServer, forgetServer, signIn, switchAccount, signOut, pickerLocked }),
-    [server, accounts, account, setServer, forgetServer, signIn, switchAccount, signOut, pickerLocked],
+    () => ({ server, accounts, account, setServer, forgetServer, signIn, updateAccount, switchAccount, signOut, pickerLocked }),
+    [server, accounts, account, setServer, forgetServer, signIn, updateAccount, switchAccount, signOut, pickerLocked],
   )
 
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>

@@ -11,7 +11,8 @@ export function NavColorsSection() {
   const ui = usePref('ui')
   const libraries = useLibraries()
   const { navColors } = ui.profile
-  const entries = [{ key: NAV_HOME, name: 'Home' }, ...(libraries.data ?? []).filter(isBrowsable).map((l) => ({ key: l.id, name: l.name }))]
+  const { showHome } = usePref('safety').value
+  const entries = [...(showHome ? [{ key: NAV_HOME, name: 'Home' }] : []), ...(libraries.data ?? []).filter(isBrowsable).map((l) => ({ key: l.id, name: l.name }))]
 
   const set = (key: string, color: string | undefined) => {
     const next = { ...navColors }

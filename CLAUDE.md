@@ -51,9 +51,12 @@ src/
 
 Build this first. It is the main reason the project exists.
 
-**Rule:** a series is in the list if the user has watched at least one episode **and** an unwatched episode exists. Sort by the **newest episode's `DateCreated`**, descending. A new episode therefore always moves the show to the top.
+**Rule (since 2026-10-17, PLAN.md §3.9):** every show or movie with anything unwatched appears in exactly one home section:
+- **Currently Watching:** anything with a play position, plus shows with at least one watched and one unwatched episode (specials count). Any entry can be removed. Sorted by **what was watched last**.
+- **New Episodes:** started, unfinished shows that were removed from Currently Watching; newest episode first. Playing them again brings them back.
+- **Not watched** (per library): shows without a watched episode, unwatched movies.
 
-**Optional "Following" flag:** an explicit per-series flag (Jellyfin favorites to start with) that keeps weekly shows in the list regardless of watch history. Decide during implementation whether it is combined with, or replaces, the inferred rule.
+Only the removed entries are stored (synced prefs `watching.hidden`), the sections are derived from Jellyfin's watch state. There is no "Following" flag anymore.
 
 Home page requirements:
 

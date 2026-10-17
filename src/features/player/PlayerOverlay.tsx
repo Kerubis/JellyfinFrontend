@@ -3,7 +3,7 @@ import { useLocation } from 'react-router'
 import { usePref } from '@/api/prefs-context'
 import { Button } from '@/components/Button'
 import { formatTime, type PlayerCommand, type PlayerState } from '@/domain/player'
-import { hasLimits, limitWarning } from '@/domain/safety'
+import { hasLimits, limitWarning, secondsUntilBedtime } from '@/domain/safety'
 import { SkipSegmentButton, UpNextCard } from './AutoplayUi'
 import { BottomBar, MiniControls } from './PlayerControls'
 import { usePlayerDispatch, usePlayerEngine, usePlayerState } from './player-context'
@@ -57,7 +57,7 @@ export function PlayerOverlay() {
     ? 'hidden'
     : full
       ? 'fixed inset-0 z-50 bg-black'
-      : 'group fixed right-4 bottom-4 z-50 aspect-video w-96 overflow-hidden rounded-lg bg-black shadow-2xl ring-1 ring-white/10'
+      : 'group fixed right-4 bottom-4 z-50 aspect-video w-144 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg bg-black shadow-2xl ring-1 ring-white/10'
 
   return (
     <div ref={containerRef} className={`${containerClass} ${full && idle ? 'cursor-none' : ''}`} onMouseMove={poke}>
@@ -191,7 +191,7 @@ function StatusLayer({ state, dispatch, compact }: { state: PlayerState; dispatc
   )
 }
 
-/** Heads-up before a soft limit (bedtime / daily budget), re-checked every 30 s while playing. */
+/** Heads-up before a soft limit (bedtime / daily budget): every second in the last 10 minutes before bedtime, else every 30 s. */
 function useLimitNotice(active: boolean): string | null {
   const safety = usePref('safety').value
   const usage = usePref('safetyUsage').value
@@ -199,9 +199,16 @@ function useLimitNotice(active: boolean): string | null {
   const watched = active && hasLimits(safety)
   useEffect(() => {
     if (!watched) return
-    const timer = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(timer)
-  }, [watched])
+    let timer = 0
+    const tick = () => {
+      const next = new Date()
+      setNow(next)
+      const untilBed = secondsUntilBedtime(safety.bedtime, next)
+      timer = window.setTimeout(tick, untilBed !== null && untilBed <= 11 * 60 ? 1000 : 30_000)
+    }
+    tick()
+    return () => window.clearTimeout(timer)
+  }, [watched, safety.bedtime])
   return watched ? limitWarning(safety, usage, now) : null
 }
 

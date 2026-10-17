@@ -3,7 +3,8 @@ import { errorMessage } from '@/api/errors'
 import { useMediaFolders, useRatingLevels, useUpdateLimits } from '@/api/queries/users'
 import { Button } from '@/components/Button'
 import { CheckboxField } from '@/components/form'
-import { hourLabel, SCHEDULE_DAYS, type AccessSchedule, type ManagedUser, type ScheduleDay, type UserLimits } from '@/domain/users'
+import { SCHEDULE_DAYS, type AccessSchedule, type ManagedUser, type ScheduleDay, type UserLimits } from '@/domain/users'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 
 const SELECT = 'rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm focus:border-accent-500 focus:outline-none'
 const HOURS = Array.from({ length: 49 }, (_, i) => i / 2)
@@ -15,6 +16,7 @@ export function LimitsEditor({ user }: { user: ManagedUser }) {
   const ratings = useRatingLevels()
   const folders = useMediaFolders()
   const save = useUpdateLimits()
+  const time = useTimeFormat()
   const set = (patch: Partial<UserLimits>) => setDraft((d) => ({ ...d, ...patch }))
   const setSchedule = (i: number, patch: Partial<AccessSchedule>) =>
     set({ schedules: draft.schedules.map((s, j) => (j === i ? { ...s, ...patch } : s)) })
@@ -81,7 +83,7 @@ export function LimitsEditor({ user }: { user: ManagedUser }) {
             <select className={SELECT} value={s.startHour} onChange={(e) => setSchedule(i, { startHour: Number(e.target.value) })}>
               {HOURS.slice(0, -1).map((h) => (
                 <option key={h} value={h}>
-                  {hourLabel(h)}
+                  {time.hour(h)}
                 </option>
               ))}
             </select>
@@ -89,7 +91,7 @@ export function LimitsEditor({ user }: { user: ManagedUser }) {
             <select className={SELECT} value={s.endHour} onChange={(e) => setSchedule(i, { endHour: Number(e.target.value) })}>
               {HOURS.slice(1).map((h) => (
                 <option key={h} value={h}>
-                  {hourLabel(h)}
+                  {time.hour(h)}
                 </option>
               ))}
             </select>

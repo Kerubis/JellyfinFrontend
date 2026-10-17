@@ -2,8 +2,8 @@ import type { UserDto } from '@jellyfin/sdk/lib/generated-client/models'
 import { getLibraryApi, getLocalizationApi, getUserApi } from '@jellyfin/sdk/lib/utils/api'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Server, SignedInAccount } from '@/domain/auth'
-import { DEFAULT_SAFETY, type SafetyPrefs } from '@/domain/safety'
-import { SCHEDULE_DAYS, type ManagedUser, type RatingLevel, type ScheduleDay, type UserLimits } from '@/domain/users'
+import { DEFAULT_SAFETY, grantExtra, type SafetyPrefs, type SafetyUsage } from '@/domain/safety'
+import { SCHEDULE_DAYS, type ManagedUser, type RatingLevel, type ScheduleDay, type UserAccess, type UserLimits } from '@/domain/users'
 import { apiFor, userImageUrl } from '../client'
 import { fetchProfilePrefs, writeProfilePrefs } from '../prefs'
 import { useSignedIn } from '../session-context'
@@ -17,6 +17,16 @@ function toManagedUser(server: Server, dto: UserDto): ManagedUser {
     name: dto.Name ?? 'User',
     isAdmin: !!p?.IsAdministrator,
     avatarUrl: userImageUrl(server.url, dto.Id ?? '', dto.PrimaryImageTag),
+    hasPassword: dto.HasPassword ?? true,
+    lastActivity: dto.LastActivityDate ?? undefined,
+    access: {
+      isAdmin: !!p?.IsAdministrator,
+      disabled: !!p?.IsDisabled,
+      hidden: !!p?.IsHidden,
+      remoteAccess: p?.EnableRemoteAccess ?? true,
+      downloads: p?.EnableContentDownloading ?? true,
+      transcoding: p?.EnableVideoPlaybackTranscoding ?? true,
+    },
     limits: {
       maxParentalRating: p?.MaxParentalRating ?? null,
       blockedTags: p?.BlockedTags ?? [],
@@ -121,11 +131,116 @@ export function useUserSafety(userId: string | undefined) {
   })
 }
 
+/**
+ * Saves another user's soft limits. Extra time granted meanwhile (another tab, the buttons) is read fresh and
+ * kept, so an older form state can't take it away.
+ */
 export function useSaveUserSafety() {
   const { server, account } = useSignedIn()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ userId, safety }: { userId: string; safety: SafetyPrefs }) => writeProfilePrefs(server, account, { safety }, userId),
-    onSuccess: (_data, { userId, safety }) => queryClient.setQueryData(['user', account.userId, 'safetyOf', userId], safety),
+    mutationFn: async ({ userId, safety }: { userId: string; safety: SafetyPrefs }) => {
+      const fresh = (await fetchProfilePrefs(server, account, userId)).safety
+      const next = { ...safety, extra: fresh.extra }
+      await writeProfilePrefs(server, account, { safety: next }, userId)
+      return next
+    },
+    onSuccess: (next, { userId }) => queryClient.setQueryData(['user', account.userId, 'safetyOf', userId], next),
+  })
+}
+
+/** Another user's watch time today (synced by their player about once a minute). */
+export function useUserUsage(userId: string) {
+  const { server, account } = useSignedIn()
+  return useQuery({
+    queryKey: ['user', account.userId, 'usageOf', userId],
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<SafetyUsage> => (await fetchProfilePrefs(server, account, userId)).safetyUsage,
+  })
+}
+
+/** Grants extra minutes for today (on top of the daily limit; gone tomorrow). */
+export function useGrantExtraTime() {
+  const { server, account } = useSignedIn()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ userId, minutes }: { userId: string; minutes: number }) => {
+      const next = grantExtra((await fetchProfilePrefs(server, account, userId)).safety, minutes, new Date())
+      await writeProfilePrefs(server, account, { safety: next }, userId)
+      return next
+    },
+    onSuccess: (next, { userId }) => queryClient.setQueryData(['user', account.userId, 'safetyOf', userId], next),
+  })
+}
+
+// --- User management (admins) --------------------------------------------------
+
+function useUsersChanged() {
+  const { account } = useSignedIn()
+  const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: ['user', account.userId, 'users'] })
+}
+
+/** Creates a user; resolves with the new user's id. */
+export function useCreateUser() {
+  const { server, account } = useSignedIn()
+  const changed = useUsersChanged()
+  return useMutation({
+    mutationFn: async ({ name, password }: { name: string; password: string }) => {
+      const { data } = await getUserApi(api(server, account)).createUserByName({ createUserByName: { Name: name.trim(), Password: password } })
+      return data.Id ?? ''
+    },
+    onSuccess: changed,
+  })
+}
+
+export function useDeleteUser() {
+  const { server, account } = useSignedIn()
+  const changed = useUsersChanged()
+  return useMutation({
+    mutationFn: (userId: string) => getUserApi(api(server, account)).deleteUser({ userId }).then(() => undefined),
+    onSuccess: changed,
+  })
+}
+
+/** Name and account switches. Name via the user record, switches via the policy (each read fresh, patched, written back). */
+export function useUpdateUserAccount() {
+  const { server, account } = useSignedIn()
+  const changed = useUsersChanged()
+  return useMutation({
+    mutationFn: async ({ userId, name, access }: { userId: string; name: string; access: UserAccess }) => {
+      const users = getUserApi(api(server, account))
+      const { data } = await users.getUserById({ userId })
+      if (name.trim() && name.trim() !== data.Name) await users.updateUser({ userId, userDto: { ...data, Name: name.trim() } })
+      if (!data.Policy) throw new Error('This user has no policy to edit.')
+      await users.updateUserPolicy({
+        userId,
+        userPolicy: {
+          ...data.Policy,
+          IsAdministrator: access.isAdmin,
+          IsDisabled: access.disabled,
+          IsHidden: access.hidden,
+          EnableRemoteAccess: access.remoteAccess,
+          EnableContentDownloading: access.downloads,
+          EnableVideoPlaybackTranscoding: access.transcoding,
+          EnableAudioPlaybackTranscoding: access.transcoding,
+        },
+      })
+    },
+    onSettled: changed,
+  })
+}
+
+/** Sets another user's password (admins need no current password); empty = remove the password. */
+export function useSetUserPassword() {
+  const { server, account } = useSignedIn()
+  const changed = useUsersChanged()
+  return useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password: string }) =>
+      getUserApi(api(server, account))
+        .updateUserPassword({ userId, updateUserPassword: password ? { NewPw: password } : { ResetPassword: true } })
+        .then(() => undefined),
+    onSuccess: changed,
   })
 }

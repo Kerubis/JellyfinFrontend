@@ -1,10 +1,10 @@
-// The core rule from CLAUDE.md, as a pure function so it doesn't depend on how data is fetched.
-//
-// A series is listed if it has at least one unwatched episode AND (the user watched or started at
-// least one episode OR follows it). Sorted by the newest episode's DateCreated,
-// descending, so a newly added episode always moves its show to the top.
-// Started movies are mixed in, sorted by when they were last played (replaces "Continue Watching").
-
+// The home sections from PLAN.md §3.9, as pure functions so they don't depend on how data is fetched.
+// Every show / movie with anything unwatched lands in exactly one section; fully watched ones in none:
+// - Currently Watching: anything with a play position (an episode → its show, movies) and shows with at least
+//   one watched and one unwatched episode (specials count), minus what was removed. Sorted by last watched (D33).
+// - New Episodes: the started, unfinished shows that were removed from Currently Watching; newest episode first.
+// - Not watched: shows without any watched episode that aren't in Currently Watching (plus unwatched movies,
+//   fetched per library elsewhere).
 import type { EpisodeRef, MediaItem } from './media'
 import type { HiddenEntry } from './prefs'
 
@@ -14,13 +14,13 @@ export type SeriesEntry = {
   /** The episode to play next. */
   next: EpisodeRef
   unplayedCount: number
-  /** Newest DateCreated of any episode of the series (watched or not). The sort key. */
+  /** Newest DateCreated of any episode of the series (watched or not); tie-breaker when never played. */
   latestAddedAt: string
   /** An unwatched episode was added within the "new" window. */
   isNew: boolean
-  followed: boolean
   /** Progress 0..1 when the next episode is partly watched (play = resume). */
   progress?: number
+  /** When an episode of it was last played ('' = never). */
   sortKey: string
 }
 
@@ -35,16 +35,6 @@ export type WatchingEntry = SeriesEntry | MovieEntry
 
 /** The id stored in the hidden list for this entry (series id or movie id). */
 export const entryId = (entry: WatchingEntry): string => (entry.kind === 'series' ? entry.seriesId : entry.movie.id)
-
-type Input = {
-  played: readonly EpisodeRef[]
-  unplayed: readonly EpisodeRef[]
-  /** Partly watched episodes and movies (server filter IsResumable). */
-  resumable: readonly MediaItem[]
-  followed: readonly string[]
-  now: number
-  newWithinDays: number
-}
 
 const isSpecial = (e: EpisodeRef) => e.seasonNumber === 0
 
@@ -91,68 +81,107 @@ function groupBySeries(episodes: readonly EpisodeRef[]): Map<string, EpisodeRef[
 const maxDate = (episodes: readonly EpisodeRef[]) =>
   episodes.reduce((max, e) => (e.dateCreated && e.dateCreated > max ? e.dateCreated : max), '')
 
-export function buildCurrentlyWatching(input: Input): WatchingEntry[] {
-  const { played, unplayed, resumable, followed, now, newWithinDays } = input
+type Input = {
+  played: readonly EpisodeRef[]
+  unplayed: readonly EpisodeRef[]
+  /** Partly watched episodes and movies (server filter IsResumable). */
+  resumable: readonly MediaItem[]
+  /** Most recently played episodes / movies, newest first: gives each show its last-played time. */
+  recentlyPlayed: readonly MediaItem[]
+  /** Show / movie ids removed from Currently Watching. */
+  removed: ReadonlySet<string>
+  now: number
+  /** Window for the NEW badge. */
+  newWithinDays: number
+}
+
+export type NotWatchedSeries = { seriesId: string; /** Newest DateCreated of its episodes. */ newestAt: string }
+
+export type HomeSections = {
+  watching: WatchingEntry[]
+  newEpisodes: NewEpisodesGroup[]
+  notWatched: NotWatchedSeries[]
+}
+
+const toEpisodeRef = (item: MediaItem): EpisodeRef | undefined =>
+  item.seriesId
+    ? { id: item.id, name: item.name, seriesId: item.seriesId, seasonNumber: item.seasonNumber, episodeNumber: item.episodeNumber, dateCreated: item.dateCreated }
+    : undefined
+
+/** Splits the watch state into the three home sections (§3.9). */
+export function buildHomeSections(input: Input): HomeSections {
+  const { played, unplayed, resumable, recentlyPlayed, removed, now, newWithinDays } = input
   const playedBySeries = groupBySeries(played)
   const unplayedBySeries = groupBySeries(unplayed)
-  const followedSet = new Set(followed)
   const resumeById = new Map(resumable.map((item) => [item.id, item]))
-  const startedSeries = new Set(resumable.flatMap((item) => (item.kind === 'episode' && item.seriesId ? [item.seriesId] : [])))
+  const partialBySeries = new Map<string, MediaItem[]>()
+  for (const item of resumable) {
+    if (item.kind === 'episode' && item.seriesId) partialBySeries.set(item.seriesId, [...(partialBySeries.get(item.seriesId) ?? []), item])
+  }
   const newSince = new Date(now - newWithinDays * 86_400_000).toISOString()
-  const entries: WatchingEntry[] = []
+  const lastPlayed = lastPlayedBySeries([...recentlyPlayed, ...resumable])
+  const sections: HomeSections = { watching: [], newEpisodes: [], notWatched: [] }
 
-  for (const [seriesId, todo] of unplayedBySeries) {
+  for (const seriesId of new Set([...unplayedBySeries.keys(), ...partialBySeries.keys()])) {
+    const todo = unplayedBySeries.get(seriesId) ?? []
     const done = playedBySeries.get(seriesId) ?? []
-    const isFollowed = followedSet.has(seriesId)
-    if (done.length === 0 && !isFollowed && !startedSeries.has(seriesId)) continue
-    const next = pickNextEpisode(done, todo)
-    if (!next) continue
+    const partial = partialBySeries.get(seriesId) ?? []
+    const started = done.length > 0 && todo.length > 0
     const newestUnplayed = maxDate(todo)
-    const latestAddedAt = [maxDate(done), newestUnplayed].sort().at(-1) ?? ''
-    entries.push({
-      kind: 'series',
-      seriesId,
-      next,
-      unplayedCount: todo.length,
-      latestAddedAt,
-      isNew: newestUnplayed >= newSince,
-      followed: isFollowed,
-      // Only the next episode's position counts; old abandoned partials elsewhere are ignored.
-      progress: resumeById.get(next.id)?.progress,
-      sortKey: latestAddedAt,
-    })
+    const isNew = newestUnplayed !== '' && newestUnplayed >= newSince
+
+    if ((started || partial.length > 0) && !removed.has(seriesId)) {
+      // Next episode; a show with nothing unwatched left but a rewatch in progress continues that one.
+      const next = pickNextEpisode(done, todo) ?? partial.map(toEpisodeRef).find(Boolean)
+      if (!next) continue
+      sections.watching.push({
+        kind: 'series',
+        seriesId,
+        next,
+        unplayedCount: todo.length,
+        latestAddedAt: [maxDate(done), newestUnplayed].sort().at(-1) ?? '',
+        isNew,
+        // Only the next episode's position counts; old abandoned partials elsewhere are ignored.
+        progress: resumeById.get(next.id)?.progress,
+        sortKey: lastPlayed.get(seriesId) ?? '',
+      })
+    } else if (started) {
+      sections.newEpisodes.push({ seriesId, episodes: [...todo].sort(compareEpisodes), newestAt: newestUnplayed, isNew })
+    } else if (done.length === 0 && todo.length > 0) {
+      sections.notWatched.push({ seriesId, newestAt: newestUnplayed })
+    }
   }
 
   for (const item of resumable) {
-    if (item.kind !== 'movie') continue
-    entries.push({ kind: 'movie', movie: item, sortKey: item.lastPlayedAt ?? item.dateCreated ?? '' })
+    if (item.kind === 'movie' && !removed.has(item.id)) {
+      sections.watching.push({ kind: 'movie', movie: item, sortKey: item.lastPlayedAt ?? item.dateCreated ?? '' })
+    }
   }
 
-  return entries.sort((a, b) => b.sortKey.localeCompare(a.sortKey))
+  const tieBreak = (e: WatchingEntry) => (e.kind === 'series' ? e.latestAddedAt : '')
+  sections.watching.sort((a, b) => b.sortKey.localeCompare(a.sortKey) || tieBreak(b).localeCompare(tieBreak(a)))
+  sections.newEpisodes.sort((a, b) => b.newestAt.localeCompare(a.newestAt))
+  sections.notWatched.sort((a, b) => b.newestAt.localeCompare(a.newestAt))
+  return sections
+}
+
+/** Series id → when one of its episodes was last played (newest wins). */
+function lastPlayedBySeries(items: readonly MediaItem[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const item of items) {
+    if (item.kind !== 'episode' || !item.seriesId || !item.lastPlayedAt) continue
+    if (item.lastPlayedAt > (map.get(item.seriesId) ?? '')) map.set(item.seriesId, item.lastPlayedAt)
+  }
+  return map
 }
 
 export type NewEpisodesGroup = {
   seriesId: string
-  /** New unwatched episodes of this series, in episode order. */
+  /** Unwatched episodes of this show, in episode order. */
   episodes: EpisodeRef[]
   newestAt: string
-}
-
-/**
- * Unwatched episodes of the given series, one group per series, newest addition first.
- * With `withinDays`, only episodes added in that window; without it, all unwatched episodes.
- */
-export function unplayedBySeries(
-  unplayed: readonly EpisodeRef[],
-  seriesIds: ReadonlySet<string>,
-  now: number,
-  withinDays?: number,
-): NewEpisodesGroup[] {
-  const since = withinDays === undefined ? '' : new Date(now - withinDays * 86_400_000).toISOString()
-  const recent = unplayed.filter((e) => seriesIds.has(e.seriesId) && (e.dateCreated ?? '') >= since)
-  return [...groupBySeries(recent)]
-    .map(([seriesId, episodes]) => ({ seriesId, episodes: episodes.sort(compareEpisodes), newestAt: maxDate(episodes) }))
-    .sort((a, b) => b.newestAt.localeCompare(a.newestAt))
+  /** An episode was added within the "new" window. */
+  isNew: boolean
 }
 
 /**
@@ -167,4 +196,25 @@ export function idsToUnhide(hidden: readonly HiddenEntry[], recentlyPlayed: read
     if (at > (lastPlayed.get(id) ?? '')) lastPlayed.set(id, at)
   }
   return hidden.filter((h) => (lastPlayed.get(h.id) ?? '') > h.at).map((h) => h.id)
+}
+
+/**
+ * Removed entries that can go (PLAN.md M18 cleanup): shows with nothing unwatched and no play position left,
+ * watched movies, and items that no longer exist. Only call this with fully loaded data.
+ */
+export function staleRemovedIds(
+  hidden: readonly HiddenEntry[],
+  data: { unplayed: readonly EpisodeRef[]; resumable: readonly MediaItem[]; items: readonly MediaItem[] },
+): string[] {
+  const items = new Map(data.items.map((item) => [item.id, item]))
+  const open = new Set([...data.unplayed.map((e) => e.seriesId), ...data.resumable.flatMap((i) => (i.seriesId ? [i.seriesId] : []))])
+  return hidden
+    .filter(({ id }) => {
+      const item = items.get(id)
+      if (!item) return true
+      if (item.kind === 'series') return !open.has(id)
+      if (item.kind === 'movie') return !!item.played && !item.progress
+      return false
+    })
+    .map((h) => h.id)
 }

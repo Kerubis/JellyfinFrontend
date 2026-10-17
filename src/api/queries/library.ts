@@ -1,7 +1,6 @@
-import { BaseItemKind, ImageType, ItemFields, ItemSortBy, SortOrder, TaskState } from '@jellyfin/sdk/lib/generated-client/models'
-import { getFilterApi, getLibraryApi, getScheduledTaskApi } from '@jellyfin/sdk/lib/utils/api'
-import { useState } from 'react'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BaseItemKind, ImageType, ItemFields, ItemSortBy, SortOrder } from '@jellyfin/sdk/lib/generated-client/models'
+import { getFilterApi, getLibraryApi } from '@jellyfin/sdk/lib/utils/api'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { Library } from '@/domain/library'
 import { letterOf, type LibraryQuery } from '@/domain/libraryQuery'
 import type { MediaItem } from '@/domain/media'
@@ -105,67 +104,6 @@ export function useLibraryLetters(library: Library | undefined, query: LibraryQu
       return index
     },
   })
-}
-
-const SCAN_POLL_MS = 3_000
-/** While a scan runs, reload what it has found so far this often (new episodes show up gradually). */
-const SCAN_RELOAD_MS = 30_000
-/** Stop following a scan after this long (the scan itself keeps running on the server). */
-const SCAN_MAX_MS = 30 * 60_000
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/**
- * Refresh button. Admins start Jellyfin's "Scan Media Library" task (`POST /Library/Refresh`, all libraries):
- * the per-library `POST /Items/{id}/Refresh` is accepted but doesn't pick up new files (checked on the
- * server, 2026-10-16). The scan runs in the background, so we follow the task's progress and reload this
- * user's data along the way and at the end (new episodes matter on home and series pages too).
- * Non-admins can't scan (RequiresElevation) and only get the grid, letters and filters reloaded.
- */
-export function useRefreshLibrary(library: Library | undefined) {
-  const { server, account } = useSignedIn()
-  const queryClient = useQueryClient()
-  const [progress, setProgress] = useState<number>()
-
-  const mutation = useMutation({
-    mutationFn: async (scan: boolean) => {
-      if (!library) return
-      if (!scan) {
-        await Promise.all(
-          ['libraryItems', 'libraryLetters', 'libraryFilters'].map((key) =>
-            queryClient.invalidateQueries({ queryKey: ['user', account.userId, key, library.id] }),
-          ),
-        )
-        return
-      }
-      const api = apiFor(server.url, account.accessToken)
-      const reloadAll = () => queryClient.invalidateQueries({ queryKey: ['user', account.userId] })
-      await getLibraryApi(api).refreshLibrary()
-      setProgress(0)
-      const started = Date.now()
-      let lastReload = started
-      let seenRunning = false
-      while (Date.now() - started < SCAN_MAX_MS) {
-        await sleep(SCAN_POLL_MS)
-        const { data } = await getScheduledTaskApi(api).getTasks({ isHidden: false })
-        const task = data.find((t) => t.Key === 'RefreshLibrary')
-        const running = task?.State === TaskState.Running || task?.State === TaskState.Cancelling
-        // The task can still read as idle for a moment right after the request.
-        if (!running && (seenRunning || Date.now() - started > 10_000)) break
-        if (running) {
-          seenRunning = true
-          setProgress(task.CurrentProgressPercentage ?? 0)
-        }
-        if (Date.now() - lastReload > SCAN_RELOAD_MS) {
-          lastReload = Date.now()
-          void reloadAll()
-        }
-      }
-      await reloadAll()
-    },
-    onSettled: () => setProgress(undefined),
-  })
-  return { ...mutation, progress }
 }
 
 /** Genres and years available in a library, for the filter dropdowns. */

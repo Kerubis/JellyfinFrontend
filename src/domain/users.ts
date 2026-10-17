@@ -17,12 +17,29 @@ export type UserLimits = {
   schedules: AccessSchedule[]
 }
 
+/** Account switches from the user's Jellyfin policy (admin user management). */
+export type UserAccess = {
+  isAdmin: boolean
+  /** Can't sign in at all. */
+  disabled: boolean
+  /** Not listed on login screens (sign in by typing the name). */
+  hidden: boolean
+  /** May connect from outside the LAN. */
+  remoteAccess: boolean
+  downloads: boolean
+  /** May get transcoded streams (off = direct play / remux only). */
+  transcoding: boolean
+}
+
 export type ManagedUser = {
   id: string
   name: string
   isAdmin: boolean
   avatarUrl?: string
   limits: UserLimits
+  access: UserAccess
+  hasPassword: boolean
+  lastActivity?: string
 }
 
 /** Ratings grouped by level: "up to 7 (TV-Y7, …)". */
@@ -32,4 +49,3 @@ export function hasHardLimits(limits: UserLimits): boolean {
   return limits.maxParentalRating !== null || limits.blockedTags.length > 0 || !limits.allFolders || limits.schedules.length > 0
 }
 
-export const hourLabel = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${h % 1 ? '30' : '00'}`

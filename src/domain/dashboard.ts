@@ -1,13 +1,8 @@
 // The home page is an ordered list of sections stored in profile prefs (PLAN.md §3.6).
 
-export type SectionType =
-  | 'currentlyWatching'
-  | 'newEpisodes'
-  | 'continueWatching'
-  | 'recentlyAdded'
-  | 'following'
-  | 'favorites'
-  | 'unwatchedMovies'
+// Removed in M18 (§3.9, covered by the sections below): continueWatching, following, unwatchedMovies;
+// saved layouts drop them in normalizeSections (unknown type).
+export type SectionType = 'currentlyWatching' | 'newEpisodes' | 'notWatched' | 'recentlyAdded' | 'favorites'
 
 export type DashboardSection = {
   id: string
@@ -16,7 +11,7 @@ export type DashboardSection = {
   title?: string
   visible: boolean
   options: {
-    /** Limit to these libraries (recentlyAdded). */
+    /** Limit to these libraries (recentlyAdded; notWatched: one row each, none = every library). */
     libraryIds?: string[]
     /** Max items loaded into the section; 0 = all. */
     limit?: number
@@ -33,20 +28,23 @@ export const SECTION_INFO: Record<SectionType, { title: string; defaultLimit: nu
   currentlyWatching: {
     title: 'Currently Watching',
     defaultLimit: 0,
-    description: 'Started or followed shows with unwatched episodes, newest episode first; started movies',
+    description: 'Everything with a play position and shows you started but not finished, last watched first',
     options: ['limit', 'days'],
   },
   newEpisodes: {
     title: 'New Episodes',
     defaultLimit: 40,
-    description: 'Unwatched episodes of the shows you are watching, one card per show',
+    description: 'Started shows you removed from Currently Watching that have unwatched episodes, newest episode first',
     options: ['limit', 'days'],
   },
-  continueWatching: { title: 'Continue Watching', defaultLimit: 30, description: 'Partly watched episodes and movies', options: ['limit'] },
+  notWatched: {
+    title: 'Not watched',
+    defaultLimit: 40,
+    description: 'Shows without a watched episode and unwatched movies, one row per library (or only the selected ones)',
+    options: ['limit', 'libraries'],
+  },
   recentlyAdded: { title: 'Recently Added', defaultLimit: 40, description: 'Newest additions, optionally from selected libraries', options: ['limit', 'libraries'] },
-  following: { title: 'Following', defaultLimit: 0, description: 'Shows you follow', options: ['limit'] },
   favorites: { title: 'Favorites', defaultLimit: 60, description: 'Your Jellyfin favorites (shows and movies)', options: ['limit'] },
-  unwatchedMovies: { title: 'Unwatched Movies', defaultLimit: 40, description: 'Movies you have not seen, newest first', options: ['limit'] },
 }
 
 export const SECTION_TYPES = Object.keys(SECTION_INFO) as SectionType[]
@@ -74,6 +72,7 @@ export const DEFAULT_SECTIONS: DashboardSection[] = [
   { id: 'currently-watching', type: 'currentlyWatching', visible: true, options: {} },
   { id: 'new-episodes', type: 'newEpisodes', visible: true, options: {} },
   { id: 'recently-added', type: 'recentlyAdded', visible: true, options: {} },
+  { id: 'not-watched', type: 'notWatched', visible: true, options: {} },
 ]
 
 export function sectionTitle(section: DashboardSection): string {

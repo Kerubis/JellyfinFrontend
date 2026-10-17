@@ -11,7 +11,7 @@ import { getLibraryApi, getUserViewApi } from '@jellyfin/sdk/lib/utils/api'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type { Server, SignedInAccount } from '@/domain/auth'
-import { buildCurrentlyWatching, entryId, unplayedBySeries, type NewEpisodesGroup, type WatchingEntry } from '@/domain/currentlyWatching'
+import { buildHomeSections, type NewEpisodesGroup, type WatchingEntry } from '@/domain/currentlyWatching'
 import type { EpisodeRef, MediaItem } from '@/domain/media'
 import { apiFor } from '../client'
 import { toEpisodeRef, toMediaItem } from '../mappers'
@@ -108,70 +108,123 @@ export function useWatchData() {
 /** For series entries `series` holds the series' names and images. */
 export type WatchingItem = { entry: WatchingEntry; series: MediaItem | undefined }
 
-/** Started/followed, unfinished series and started movies, before the hidden list is applied. */
-function useWatchingCandidates(newWithinDays: number) {
+/** All three home sections from one pass over the watch state (§3.9); shared by the section hooks. */
+function useHomeSections(newBadgeDays: number) {
   const data = useWatchData()
-  const { followed } = usePref('following').value
-  const { played, unplayed, resumable, catalog, fetchedAt } = data
-  const items = useMemo<WatchingItem[]>(() => {
-    if (!played || !unplayed || !resumable) return []
-    return buildCurrentlyWatching({ played, unplayed, resumable, followed, now: fetchedAt, newWithinDays }).map(
-      (entry) => ({ entry, series: entry.kind === 'series' ? catalog?.get(entry.seriesId) : undefined }),
-    )
-  }, [played, unplayed, resumable, catalog, followed, newWithinDays, fetchedAt])
-  return { items, isPending: data.isPending, error: data.error }
+  // The Currently Watching sort key: when something of each show / movie was last watched.
+  const recent = useRecentlyPlayed(true)
+  const { hidden } = usePref('watching').value
+  const { played, unplayed, resumable, fetchedAt } = data
+  const recentlyPlayed = recent.data
+  const sections = useMemo(() => {
+    if (!played || !unplayed || !resumable || !recentlyPlayed) return undefined
+    const removed = new Set(hidden.map((h) => h.id))
+    return buildHomeSections({ played, unplayed, resumable, recentlyPlayed, removed, now: fetchedAt, newWithinDays: newBadgeDays })
+  }, [played, unplayed, resumable, recentlyPlayed, hidden, fetchedAt, newBadgeDays])
+  return { sections, catalog: data.catalog, isPending: data.isPending || recent.isPending, error: data.error ?? recent.error }
 }
 
-/** Currently Watching: the candidates minus what the user hid from it (`following.hidden`). */
-export function useCurrentlyWatching(newWithinDays: number) {
-  const candidates = useWatchingCandidates(newWithinDays)
-  const { hidden } = usePref('following').value
-  const items = useMemo(() => {
-    const hiddenSet = new Set(hidden.map((h) => h.id))
-    return candidates.items.filter(({ entry }) => !hiddenSet.has(entryId(entry)))
-  }, [candidates.items, hidden])
-  return { ...candidates, items }
+/** Currently Watching: play positions and started, unfinished shows, minus what was removed. */
+export function useCurrentlyWatching(newBadgeDays: number) {
+  const { sections, catalog, isPending, error } = useHomeSections(newBadgeDays)
+  const items = useMemo<WatchingItem[]>(
+    () => (sections?.watching ?? []).map((entry) => ({ entry, series: entry.kind === 'series' ? catalog?.get(entry.seriesId) : undefined })),
+    [sections, catalog],
+  )
+  return { items, isPending, error }
 }
 
 export type NewEpisodeItem = { group: NewEpisodesGroup; series: MediaItem | undefined; isNew: boolean }
 
 /**
- * Unwatched episodes of started or followed, unfinished series (incl. ones hidden from Currently Watching), one
- * group per series. `withinDays` limits it to recently added episodes; undefined shows all.
+ * New Episodes: started, unfinished shows removed from Currently Watching, one group per show, newest episode
+ * first. `withinDays` keeps only episodes added in that window (a show without any drops out); undefined = all.
  */
 export function useNewEpisodes(withinDays: number | undefined, newBadgeDays: number) {
-  // Hidden shows stay here: hiding only removes them from Currently Watching.
-  const watching = useWatchingCandidates(newBadgeDays)
-  const { unplayed, catalog, fetchedAt } = useWatchData()
+  const { sections, catalog, isPending, error } = useHomeSections(newBadgeDays)
+  const { fetchedAt } = useWatchData()
   const items = useMemo<NewEpisodeItem[]>(() => {
-    if (!unplayed) return []
-    const newSeries = new Set<string>()
-    const seriesIds = new Set<string>()
-    for (const { entry } of watching.items) {
-      if (entry.kind !== 'series') continue
-      seriesIds.add(entry.seriesId)
-      if (entry.isNew) newSeries.add(entry.seriesId)
-    }
-    return unplayedBySeries(unplayed, seriesIds, fetchedAt, withinDays).map((group) => ({
-      group,
-      series: catalog?.get(group.seriesId),
-      isNew: newSeries.has(group.seriesId),
-    }))
-  }, [unplayed, catalog, watching.items, withinDays, fetchedAt])
-  return { items, isPending: watching.isPending, error: watching.error }
-}
-
-export function useFollowedSeries() {
-  const { catalog, isPending, error } = useWatchData()
-  const { followed } = usePref('following').value
-  const items = useMemo(
-    () => followed.flatMap((id) => catalog?.get(id) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
-    [catalog, followed],
-  )
+    const since = withinDays === undefined ? '' : new Date(fetchedAt - withinDays * 86_400_000).toISOString()
+    return (sections?.newEpisodes ?? []).flatMap((group) => {
+      const episodes = group.episodes.filter((e) => (e.dateCreated ?? '') >= since)
+      return episodes.length > 0 ? [{ group: { ...group, episodes }, series: catalog?.get(group.seriesId), isNew: group.isNew }] : []
+    })
+  }, [sections, catalog, withinDays, fetchedAt])
   return { items, isPending, error }
 }
 
-/** The most recently played episodes/movies (any client), for un-hiding what was watched again. */
+/**
+ * Not watched, for one library: shows without any watched episode (not in Currently Watching) and unwatched movies
+ * (a started movie only once removed from Currently Watching), newest added first.
+ */
+export function useNotWatched(libraryId: string, limit: number) {
+  const { server, account } = useSignedIn()
+  const { sections, catalog, isPending, error } = useHomeSections(7)
+  const library = useQuery({
+    queryKey: ['user', account.userId, 'notWatchedLibrary', libraryId, limit],
+    staleTime: 2 * MINUTE,
+    refetchInterval: 10 * MINUTE,
+    queryFn: async () => {
+      const api = libraryApi(server, account)
+      const [series, movies] = await Promise.all([
+        // Which shows live in this library (ids only; names and images come from the catalog).
+        api.getItems({
+          userId: account.userId,
+          parentId: libraryId,
+          recursive: true,
+          includeItemTypes: [BaseItemKind.Series],
+          enableImages: false,
+          enableUserData: false,
+          enableTotalRecordCount: false,
+        }),
+        fetchItems(server, account, {
+          parentId: libraryId,
+          includeItemTypes: [BaseItemKind.Movie],
+          isPlayed: false,
+          sortBy: [ItemSortBy.DateCreated],
+          sortOrder: [SortOrder.Descending],
+          limit: limit > 0 ? limit : undefined,
+        }),
+      ])
+      return { seriesIds: new Set((series.data.Items ?? []).flatMap((dto) => (dto.Id ? [dto.Id] : []))), movies }
+    },
+  })
+  const items = useMemo(() => {
+    if (!sections || !library.data) return []
+    const inWatching = new Set(sections.watching.flatMap((e) => (e.kind === 'movie' ? [e.movie.id] : [])))
+    const shows = sections.notWatched
+      .filter((s) => library.data.seriesIds.has(s.seriesId))
+      .flatMap((s) => {
+        const series = catalog?.get(s.seriesId)
+        return series ? [{ item: series, at: s.newestAt }] : []
+      })
+    const movies = library.data.movies.filter((m) => !inWatching.has(m.id)).map((m) => ({ item: m, at: m.dateCreated ?? '' }))
+    const all = [...shows, ...movies].sort((a, b) => b.at.localeCompare(a.at)).map((x) => x.item)
+    return limit > 0 ? all.slice(0, limit) : all
+  }, [sections, library.data, catalog, limit])
+  return { items, isPending: isPending || library.isPending, error: error ?? library.error }
+}
+
+/** Watch state of removed entries (exists? watched?), for cleaning up the removed list. */
+export function useRemovedItemsState(ids: readonly string[]) {
+  const { server, account } = useSignedIn()
+  const sorted = [...ids].sort()
+  return useQuery({
+    queryKey: ['user', account.userId, 'removedState', sorted],
+    enabled: sorted.length > 0,
+    staleTime: 10 * MINUTE,
+    queryFn: async () => {
+      const { data } = await libraryApi(server, account).getItems({ userId: account.userId, ids: sorted, enableImages: false, enableTotalRecordCount: false })
+      return (data.Items ?? []).map((dto) => toMediaItem(server, dto))
+    },
+  })
+}
+
+/**
+ * The most recently played episodes/movies (any client): the Currently Watching sort order and un-hiding
+ * what was watched again. 300 plays reach back far enough for every show still being watched; a show not
+ * among them sorts as "watched long ago".
+ */
 export function useRecentlyPlayed(enabled: boolean) {
   const { server, account } = useSignedIn()
   return useQuery({
@@ -184,7 +237,7 @@ export function useRecentlyPlayed(enabled: boolean) {
         includeItemTypes: [BaseItemKind.Episode, BaseItemKind.Movie],
         sortBy: [ItemSortBy.DatePlayed],
         sortOrder: [SortOrder.Descending],
-        limit: 50,
+        limit: 300,
         enableImages: false,
       }),
   })
@@ -257,7 +310,7 @@ async function fetchRecentlyAdded(
     .slice(0, limit)
 }
 
-export type ItemListKind = 'continueWatching' | 'recentlyAdded' | 'favorites' | 'unwatchedMovies'
+export type ItemListKind = 'recentlyAdded' | 'favorites'
 
 export function useItemList(kind: ItemListKind, limit: number, libraryIds: readonly string[] = []) {
   const { server, account } = useSignedIn()
@@ -267,8 +320,6 @@ export function useItemList(kind: ItemListKind, limit: number, libraryIds: reado
     refetchInterval: kind === 'favorites' ? false : 10 * MINUTE,
     queryFn: (): Promise<MediaItem[]> => {
       switch (kind) {
-        case 'continueWatching':
-          return fetchResumable(server, account).then((items) => items.slice(0, limit))
         case 'recentlyAdded':
           return fetchRecentlyAdded(server, account, libraryIds, limit)
         case 'favorites':
@@ -276,14 +327,6 @@ export function useItemList(kind: ItemListKind, limit: number, libraryIds: reado
             isFavorite: true,
             includeItemTypes: [BaseItemKind.Series, BaseItemKind.Movie],
             sortBy: [ItemSortBy.SortName],
-            limit,
-          })
-        case 'unwatchedMovies':
-          return fetchItems(server, account, {
-            includeItemTypes: [BaseItemKind.Movie],
-            isPlayed: false,
-            sortBy: [ItemSortBy.DateCreated],
-            sortOrder: [SortOrder.Descending],
             limit,
           })
       }

@@ -388,17 +388,20 @@ export async function reportStopped(server: Server, account: SignedInAccount, re
   })
 }
 
-/** Best-effort "stopped" while the page unloads (normal requests get cancelled there). */
+/** "Stopped" while the page unloads (reload, closing the tab): a keepalive request outlives the page. */
 export function reportStoppedOnUnload(server: Server, account: SignedInAccount, report: PlaybackReport) {
   const info = toProgressInfo(report)
-  const body = JSON.stringify({
-    ItemId: info.ItemId,
-    MediaSourceId: info.MediaSourceId,
-    PlaySessionId: info.PlaySessionId,
-    PositionTicks: info.PositionTicks,
-  })
-  navigator.sendBeacon(
-    `${server.url}/Sessions/Playing/Stopped?api_key=${encodeURIComponent(account.accessToken)}`,
-    new Blob([body], { type: 'application/json' }),
-  )
+  // keepalive: the browser finishes the request while the page unloads. Not sendBeacon: Chromium refuses to send
+  // a beacon with a JSON body (non-safelisted type), and Jellyfin only accepts JSON here, so the stop got lost.
+  void fetch(`${server.url}/Sessions/Playing/Stopped`, {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json', Authorization: apiFor(server.url, account.accessToken).authorizationHeader },
+    body: JSON.stringify({
+      ItemId: info.ItemId,
+      MediaSourceId: info.MediaSourceId,
+      PlaySessionId: info.PlaySessionId,
+      PositionTicks: info.PositionTicks,
+    }),
+  }).catch(() => undefined)
 }

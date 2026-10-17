@@ -7,6 +7,7 @@ import { DEFAULT_SECTIONS, normalizeSections, type DashboardSection } from './da
 import { DEFAULT_SAFETY, HHMM, type SafetyPrefs, type SafetyUsage } from './safety'
 import type { PartialRule, SubtitleMode, TrackMemory } from './tracks'
 import { normalizeLanguage } from '@/lib/languages'
+import type { TimeFormat } from '@/lib/time'
 
 export type SkipMode = 'auto' | 'button' | 'off'
 
@@ -42,6 +43,8 @@ export type UiPrefs = {
   showSpoilers: boolean
   /** Text colour of the header links by NAV_HOME or library id (#rrggbb); missing = default grey/white. */
   navColors: Record<string, string>
+  /** Clock times: follow the browser's language, or always 24 / 12 hours. */
+  timeFormat: TimeFormat
 }
 
 /** navColors key of the "Home" link. */
@@ -76,10 +79,9 @@ export type HiddenEntry = {
   at: string
 }
 
-export type FollowingPrefs = {
-  /** Series ids that stay in Currently Watching regardless of watch history. */
-  followed: string[]
-  /** Removed from Currently Watching (still listed in New Episodes). */
+/** What was removed from Currently Watching (PLAN.md §3.9): only the exceptions are stored, the sections are derived. */
+export type WatchingPrefs = {
+  /** Removed shows / movies; a show then sits in New Episodes (or Not watched), a movie in Not watched. */
   hidden: HiddenEntry[]
 }
 
@@ -117,7 +119,7 @@ export type SeriesTrackPrefs = {
 export type PrefsSchema = {
   playback: PlaybackPrefs
   ui: UiPrefs
-  following: FollowingPrefs
+  watching: WatchingPrefs
   dashboard: DashboardPrefs
   subtitles: SubtitlePrefs
   languages: LanguagePrefs
@@ -172,9 +174,10 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
   },
   ui: {
     version: 1,
-    defaults: { cardSize: 'sm', showSpoilers: false, navColors: {} },
+    defaults: { cardSize: 'sm', showSpoilers: false, navColors: {}, timeFormat: 'auto' },
     normalize: (v) => ({
       ...v,
+      timeFormat: v.timeFormat === '24' || v.timeFormat === '12' ? v.timeFormat : 'auto',
       navColors: Object.fromEntries(
         Object.entries(isRecord(v.navColors) ? v.navColors : {}).filter(
           (entry): entry is [string, string] => typeof entry[1] === 'string' && HEX_COLOR.test(entry[1]),
@@ -182,9 +185,10 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
       ),
     }),
   },
-  following: {
+  // Stored as `following` until 2026-10-17 (together with the removed Follow list); decodeAllPrefs carries it over.
+  watching: {
     version: 2,
-    defaults: { followed: [], hidden: [] },
+    defaults: { hidden: [] },
     // v1 stored hidden as plain ids; give them a "hidden now" timestamp.
     migrate: (data, from) =>
       from < 2 && Array.isArray(data.hidden)
@@ -193,10 +197,7 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
             hidden: data.hidden.map((id: unknown) => (typeof id === 'string' ? { id, at: new Date().toISOString() } : id)),
           }
         : data,
-    normalize: (v) => ({
-      followed: v.followed.filter((id) => typeof id === 'string'),
-      hidden: (v.hidden as unknown[]).filter(isHiddenEntry),
-    }),
+    normalize: (v) => ({ hidden: (v.hidden as unknown[]).filter(isHiddenEntry) }),
   },
   subtitles: {
     version: 1,
@@ -228,6 +229,11 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
         start: isRecord(v.bedtime) && typeof v.bedtime.start === 'string' && HHMM.test(v.bedtime.start) ? v.bedtime.start : DEFAULT_SAFETY.bedtime.start,
         end: isRecord(v.bedtime) && typeof v.bedtime.end === 'string' && HHMM.test(v.bedtime.end) ? v.bedtime.end : DEFAULT_SAFETY.bedtime.end,
       },
+      showHome: v.showHome !== false,
+      extra: {
+        date: isRecord(v.extra) && typeof v.extra.date === 'string' ? v.extra.date : '',
+        minutes: isRecord(v.extra) && typeof v.extra.minutes === 'number' ? clamp(Math.round(v.extra.minutes), 0, 24 * 60) : 0,
+      },
     }),
   },
   safetyUsage: {
@@ -241,8 +247,13 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
     normalize: (v) => ({ entries: isRecord(v.entries) ? (v.entries as SeriesTrackPrefs['entries']) : {} }),
   },
   dashboard: {
-    version: 1,
+    version: 2,
     defaults: { sections: DEFAULT_SECTIONS, deviceHidden: [] },
+    // v2 (M18): saved layouts get the new "Not watched" section once (removed section types drop out in normalize).
+    migrate: (data, from) =>
+      from < 2 && Array.isArray(data.sections) && !data.sections.some((s: unknown) => isRecord(s) && s.type === 'notWatched')
+        ? { ...data, sections: [...data.sections, { id: 'not-watched', type: 'notWatched', visible: true, options: {} }] }
+        : data,
     normalize: (v) => ({
       sections: normalizeSections(v.sections),
       deviceHidden: v.deviceHidden.filter((id) => typeof id === 'string'),
@@ -291,6 +302,14 @@ export function encodePref(key: PrefKey, value: unknown): string {
   return JSON.stringify(envelope)
 }
 
+/** Keys that were renamed: until the new key is written, its value is read from the old one. */
+const RENAMED_FROM: Partial<Record<PrefKey, string>> = { watching: 'following' }
+
 export function decodeAllPrefs(raw: Record<string, string | null | undefined>): PrefsValues {
-  return Object.fromEntries(PREF_KEYS.map((key) => [key, decodePref(key, raw[key])])) as PrefsValues
+  return Object.fromEntries(
+    PREF_KEYS.map((key) => {
+      const old = RENAMED_FROM[key]
+      return [key, decodePref(key, raw[key] ?? (old ? raw[old] : undefined))]
+    }),
+  ) as PrefsValues
 }

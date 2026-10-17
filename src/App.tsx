@@ -3,11 +3,13 @@ import { PrefsProvider } from '@/api/PrefsProvider'
 import { useServerUnreachable } from '@/api/queries/server'
 import { useSession } from '@/api/session-context'
 import { Layout } from '@/components/Layout'
+import { LibraryScanButton } from '@/features/admin/LibraryScanButton'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { ProfileMenu } from '@/features/auth/ProfileMenu'
 import { ServerSetup } from '@/features/auth/ServerSetup'
-import { HomePage } from '@/features/home/HomePage'
+import { HomeRoute } from '@/features/home/HomeRoute'
 import { LibraryNav } from '@/features/library/LibraryNav'
+import { TimeLeftChip } from '@/features/limits/TimeLeftChip'
 import { LibraryPage } from '@/features/library/LibraryPage'
 import { MoviePage } from '@/features/movies/MoviePage'
 import { PlayerOverlay } from '@/features/player/PlayerOverlay'
@@ -34,13 +36,16 @@ export default function App() {
           actions={
             <>
               <SearchBox />
+              <TimeLeftChip />
+              <LibraryScanButton />
               <ProfileMenu />
             </>
           }
         >
           <Routes>
-            <Route index element={<HomePage />} />
+            <Route index element={<HomeRoute />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/:page" element={<SettingsPage />} />
             <Route path="series/:seriesId" element={<SeriesPage />} />
             <Route path="series/:seriesId/episode/:episodeId" element={<SeriesPage />} />
             <Route path="episode/:episodeId" element={<EpisodeRedirect />} />
