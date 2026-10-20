@@ -5,6 +5,7 @@
 
 import { DEFAULT_SECTIONS, normalizeSections, type DashboardSection } from './dashboard'
 import { DEFAULT_SAFETY, HHMM, type SafetyPrefs, type SafetyUsage } from './safety'
+import { AIR_TYPES, EPISODE_RANGE_MAX, type ScheduleFilters } from './schedule'
 import type { PartialRule, SubtitleMode, TrackMemory } from './tracks'
 import { normalizeLanguage } from '@/lib/languages'
 import type { TimeFormat } from '@/lib/time'
@@ -35,7 +36,9 @@ export function skipSeconds(playback: PlaybackPrefs, libraryId: string | undefin
   return { back: library?.back ?? playback.skipBack, forward: library?.forward ?? playback.skipForward }
 }
 
-export type CardSize = 'xs' | 'sm' | 'md'
+export type CardSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+
+export const CARD_SIZES: readonly CardSize[] = ['xs', 'sm', 'md', 'lg', 'xl']
 
 export type UiPrefs = {
   cardSize: CardSize
@@ -128,6 +131,10 @@ export type PrefsSchema = {
   safety: SafetyPrefs
   /** Watch time counted today (written by the profile's own player). */
   safetyUsage: SafetyUsage
+  /** Airing schedule settings and filters. */
+  schedule: ScheduleFilters
+  /** AnimeSchedule.net API application of this profile (Settings → Integrations); empty token = schedule off. */
+  animeSchedule: { appId: string; token: string }
 }
 
 export type PrefKey = keyof PrefsSchema
@@ -177,6 +184,7 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
     defaults: { cardSize: 'sm', showSpoilers: false, navColors: {}, timeFormat: 'auto' },
     normalize: (v) => ({
       ...v,
+      cardSize: CARD_SIZES.find((size) => size === v.cardSize) ?? 'sm',
       timeFormat: v.timeFormat === '24' || v.timeFormat === '12' ? v.timeFormat : 'auto',
       navColors: Object.fromEntries(
         Object.entries(isRecord(v.navColors) ? v.navColors : {}).filter(
@@ -247,6 +255,54 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
     version: 1,
     defaults: { entries: {} },
     normalize: (v) => ({ entries: isRecord(v.entries) ? (v.entries as SeriesTrackPrefs['entries']) : {} }),
+  },
+  animeSchedule: {
+    version: 1,
+    defaults: { appId: '', token: '' },
+    normalize: (v) => ({ appId: v.appId.trim(), token: v.token.trim() }),
+  },
+  schedule: {
+    version: 1,
+    // AnimeSchedule.net's own defaults as the user had them set up there.
+    defaults: {
+      airTypes: ['raw', 'sub'],
+      hideRawWhen: ['sub'],
+      hideSubWhen: [],
+      hideDubWhen: [],
+      images: true,
+      donghua: false,
+      sortBy: 'time',
+      weekStart: 'monday',
+      platformMode: 'include',
+      platforms: [],
+      mediaTypes: ['tv', 'ona'],
+      totalEpisodes: [0, EPISODE_RANGE_MAX],
+      airedEpisode: [0, EPISODE_RANGE_MAX],
+    },
+    normalize: (v) => {
+      const pick = <T extends string>(list: unknown[], allowed: readonly T[]) => allowed.filter((x) => list.includes(x))
+      const range = (value: unknown[]): [number, number] => {
+        const [min, max] = value.map((n) => (typeof n === 'number' ? clamp(Math.round(n), 0, EPISODE_RANGE_MAX) : NaN))
+        return min !== undefined && max !== undefined && !Number.isNaN(min) && !Number.isNaN(max) && min <= max
+          ? [min, max]
+          : [0, EPISODE_RANGE_MAX]
+      }
+      return {
+        airTypes: pick(v.airTypes, AIR_TYPES),
+        hideRawWhen: pick(v.hideRawWhen, ['sub', 'dub'] as const),
+        hideSubWhen: pick(v.hideSubWhen, ['dub', 'raw'] as const),
+        hideDubWhen: pick(v.hideDubWhen, ['sub', 'raw'] as const),
+        images: v.images,
+        donghua: v.donghua,
+        sortBy: (['time', 'alphabetical', 'unaired'] as const).find((s) => s === v.sortBy) ?? 'time',
+        weekStart: (['monday', 'sunday', 'saturday', 'rotating'] as const).find((s) => s === v.weekStart) ?? 'monday',
+        platformMode: v.platformMode === 'exclude' ? 'exclude' : 'include',
+        platforms: v.platforms.filter((p) => typeof p === 'string'),
+        mediaTypes: v.mediaTypes.filter((t) => typeof t === 'string'),
+        totalEpisodes: range(v.totalEpisodes),
+        airedEpisode: range(v.airedEpisode),
+      }
+    },
   },
   dashboard: {
     version: 2,

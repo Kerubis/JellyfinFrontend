@@ -8,16 +8,20 @@ const POSTER_MIN: Record<CardSize, string> = {
   xs: 'grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))]',
   sm: 'grid-cols-[repeat(auto-fill,minmax(7rem,1fr))]',
   md: 'grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]',
+  lg: 'grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]',
+  xl: 'grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))]',
 }
 
 const THUMB_MIN: Record<CardSize, string> = {
   xs: 'grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]',
   sm: 'grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]',
   md: 'grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]',
+  lg: 'grid-cols-[repeat(auto-fill,minmax(20rem,1fr))]',
+  xl: 'grid-cols-[repeat(auto-fill,minmax(24rem,1fr))]',
 }
 
-const POSTER_WIDTH: Record<CardSize, string> = { xs: '*:w-[5.5rem]', sm: '*:w-28', md: '*:w-36' }
-const THUMB_WIDTH: Record<CardSize, string> = { xs: '*:w-40', sm: '*:w-52', md: '*:w-64' }
+const POSTER_WIDTH: Record<CardSize, string> = { xs: '*:w-[5.5rem]', sm: '*:w-28', md: '*:w-36', lg: '*:w-44', xl: '*:w-54' }
+const THUMB_WIDTH: Record<CardSize, string> = { xs: '*:w-40', sm: '*:w-52', md: '*:w-64', lg: '*:w-80', xl: '*:w-96' }
 
 type CardListProps = { size: CardSize; variant: 'poster' | 'thumb'; children: ReactNode }
 
@@ -71,6 +75,8 @@ type CardProps = MediaTileActions & {
   /** NEW / NEXT marker, bottom-left. */
   marker?: string
   progress?: number
+  /** Permanent Jellyfin-blue ring (MediaTile). */
+  highlighted?: boolean
   tooltip?: string
   /** Replaces the default title/subtitle block (e.g. MediaCaption with its own links). */
   caption?: ReactNode

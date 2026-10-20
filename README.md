@@ -46,6 +46,7 @@ Then in Unraid: Docker → Check for updates → apply update. The version is sh
 - nginx serves the static build; unknown paths fall back to `index.html` (client-side routes).
 - At container start, [docker/40-jff-config.sh](docker/40-jff-config.sh) writes `JELLYFIN_URL` into `/config.js`; the app connects to it without the server setup screen (the form still appears if the server can't be reached).
 - The browser talks to Jellyfin directly (Jellyfin allows cross-origin requests by default). If the frontend is ever served over HTTPS, Jellyfin must be reachable over HTTPS too, or the browser blocks the requests (mixed content).
+- `/animeschedule/*` passes GET requests through to the AnimeSchedule.net API (it sends no CORS headers) for the Schedule page. Each profile enters its own app token in Settings → Integrations; nginx only forwards it.
 - Health check: `GET /health`.
 
 ## Credits

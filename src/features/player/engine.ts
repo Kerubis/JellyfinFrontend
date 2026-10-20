@@ -595,10 +595,16 @@ export class PlayerEngine {
 
   private async onEnded() {
     const { item, nextItemId } = this.state
+    const token = this.loadToken
     this.set({ status: 'ended' })
     await this.reportStopped()
     if (item) this.deps.onStopped?.(item)
-    if (nextItemId && this.deps.autoplay().enabled && !this.upNextDismissed && !this.state.stillWatching) void this.autoAdvance()
+    // Nothing comes next (last episode, a movie): close instead of showing "Finished".
+    if (!nextItemId) {
+      if (token === this.loadToken) await this.stop()
+      return
+    }
+    if (this.deps.autoplay().enabled && !this.upNextDismissed && !this.state.stillWatching) void this.autoAdvance()
   }
 
   private async stop() {

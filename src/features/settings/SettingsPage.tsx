@@ -22,6 +22,7 @@ import { TwoColumns } from './admin/parts'
 import { AvatarSection, PasswordSection, QuickConnectSection } from './AccountSections'
 import { DeviceNameSection, ServerSection } from './DeviceServerSection'
 import { HiddenSection } from './HiddenSection'
+import { AnimeScheduleSection } from './IntegrationsSection'
 import { LanguageSection } from './LanguageSection'
 import { NavColorsSection } from './NavColorsSection'
 import { PlaybackDeviceSection } from './PlaybackDeviceSection'
@@ -95,6 +96,7 @@ const PAGES: (Page & { visible?: (v: Visibility) => boolean })[] = [
       <HiddenSection />
     ),
   },
+  { id: 'integrations', group: 'profile', label: 'Integrations', content: () => <AnimeScheduleSection /> },
   { id: 'limits', group: 'profile', label: 'Limits', content: () => <OwnLimitsSection />, visible: (v) => !v.isAdmin && v.hasLimits },
   // This device: stored in this browser only.
   {

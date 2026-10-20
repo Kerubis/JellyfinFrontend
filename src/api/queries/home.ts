@@ -82,11 +82,7 @@ export function useWatchData() {
     staleTime: MINUTE,
     refetchInterval: 5 * MINUTE,
   })
-  const catalog = useQuery({
-    queryKey: ['user', user, 'seriesCatalog'],
-    queryFn: () => fetchSeriesCatalog(server, account),
-    staleTime: 10 * MINUTE,
-  })
+  const catalog = useSeriesCatalog()
   const resumable = useQuery({
     queryKey: keys.resumable,
     queryFn: () => fetchResumable(server, account),
@@ -103,6 +99,16 @@ export function useWatchData() {
     isPending: played.isPending || unplayed.isPending || catalog.isPending || resumable.isPending,
     error: played.error ?? unplayed.error ?? catalog.error ?? resumable.error,
   }
+}
+
+/** Every series as a media item by id (names, images, counts); shared with the schedule page. */
+export function useSeriesCatalog() {
+  const { server, account } = useSignedIn()
+  return useQuery({
+    queryKey: ['user', account.userId, 'seriesCatalog'],
+    queryFn: () => fetchSeriesCatalog(server, account),
+    staleTime: 10 * MINUTE,
+  })
 }
 
 /** For series entries `series` holds the series' names and images. */

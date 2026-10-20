@@ -21,6 +21,8 @@ const CARD_SIZES: { value: CardSize; label: string }[] = [
   { value: 'xs', label: 'Extra small' },
   { value: 'sm', label: 'Small' },
   { value: 'md', label: 'Medium' },
+  { value: 'lg', label: 'Large' },
+  { value: 'xl', label: 'Extra large' },
 ]
 
 const TIME_FORMATS: { value: TimeFormat; label: string }[] = [

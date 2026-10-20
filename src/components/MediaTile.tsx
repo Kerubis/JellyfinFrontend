@@ -33,6 +33,8 @@ type Props = MediaTileActions & {
   progress?: number
   /** Permanent ring (selected season, next episode). */
   selected?: boolean
+  /** Permanent Jellyfin-blue ring (e.g. schedule shows that are in the library). */
+  highlighted?: boolean
   /** Spoiler protection: blur the image. */
   blurred?: boolean
   /** Only the top corners rounded (image sits on a banner). */
@@ -50,7 +52,7 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
  */
 export function MediaTile(props: Props) {
   const { imageUrl, aspect, title, onPlay, playLabel, onSelect, href, watched, menu } = props
-  const { count, marker, progress, selected, blurred, roundedTop, tab } = props
+  const { count, marker, progress, selected, highlighted, blurred, roundedTop, tab } = props
   const round = roundedTop ? 'rounded-t' : 'rounded'
 
   const image = (
@@ -75,7 +77,9 @@ export function MediaTile(props: Props) {
       {onPlay && !onSelect && <PlayOverlay />}
       {/* Hover / selected ring; hidden while the ⋯ menu is open (it draws its own outline around tile + menu). */}
       <span
-        className={`pointer-events-none absolute inset-0 ${round} ring-accent-400 ring-inset transition group-has-[[aria-expanded=true]]:hidden ${selected ? 'ring-2' : 'group-hover:ring-2'}`}
+        className={`pointer-events-none absolute inset-0 ${round} ring-inset transition group-has-[[aria-expanded=true]]:hidden ${
+          selected ? 'ring-2 ring-accent-400' : highlighted ? 'ring-3 ring-accent-600 group-hover:ring-accent-400' : 'ring-accent-400 group-hover:ring-2'
+        }`}
       />
     </div>
   )

@@ -44,6 +44,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · `(later)` designed now,
 | D32 | Settings live in one place (`/settings/:page`, left menu grouped Profile / This device / Administration). **Admin dashboard fully native**, no links into the official web client; plugin settings via a form generated from their JSON configuration. Overlapping profile settings are **written through** to Jellyfin's user configuration | The official frontend shouldn't be needed for anything. Write-through keeps other Jellyfin apps consistent |
 | D33 | **Currently Watching sorts by last watched** (2026-10-17), replacing the newest-episode rule: a series by its most recently played episode, movies by their own last play, followed-but-unwatched series last (newest episode first). Last-played times come from the 300 most recent plays (`useRecentlyPlayed`), not from the full played list | User preference. Series-level `LastPlayedDate` is always empty on 12.2; per-episode UserData on the full played list would cost +23 % payload and ~5× server time |
 | D34 | **Home sections partition everything unwatched** (§3.9, M18): Currently Watching (play position or started & unfinished, removable), New Episodes (removed started shows), Not watched per library. Follow, Continue Watching and Unwatched Movies removed; specials count | User decision 2026-10-17. Only the removed entries are stored (one source of truth: Jellyfin's watch state) |
+| D35 | **Airing schedule from AnimeSchedule.net API v3** (M19): the app token is **per profile** (synced pref `animeSchedule`, Settings → Integrations), not a container variable. The API sends no CORS headers, so `/animeschedule/*` is a GET-only pass-through proxy (Vite in dev, nginx in the image) that forwards the browser's `Authorization` header and stores nothing | User decision 2026-10-20. Verified: no CORS (also no preflight answer), 120 requests/min, ISO week numbers for `year`/`week`, `episodeDate` is local to `tz` |
+| D36 | Timetable is always fetched as `/timetables/all` and **filtered client-side** (settings modelled on AnimeSchedule's own filter panel, synced pref `schedule`) | The "hide raw when subbed / sub when dubbed …" rules need every air type of a show. A 7-day window not starting on Monday loads two ISO weeks |
+| D37 | Schedule ↔ library matching **by title**: AnimeSchedule romaji / English / Japanese titles vs Jellyfin `Name` / `OriginalTitle`, normalized (NFKC, lower case, letters and digits only), season suffixes dropped ("3rd Season", "Part 2", "第2期", " 2", " II"), then a prefix match of 6+ characters | Timetable entries have no external ids and the library only has TMDB/TVDB/IMDb. Checked 2026-10-20: 12 of the week's 150 shows matched, no false hits, the misses weren't airing. Ids (Fribb mapping) come with the Seerr step |
 | D12 | One `deviceId` per browser, shared by all profiles on it | Stable identity for the Jellyfin dashboard / HA. To verify: switching profiles on one device doesn't revoke the other profile's token |
 
 ---
@@ -477,6 +480,18 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 - [x] Cleanup (`useRemovedListMaintenance`): drops entries with nothing unwatched / no position left, watched movies, items that no longer exist; only when all lists loaded without error; also brings entries back after a later play (as before)
 - [x] CLAUDE.md core rule, section descriptions, settings texts updated
 - [x] Verify in the browser: remove / bring back a show and a movie, cleanup after finishing a removed show, own custom sections from before (e.g. renamed "Not watched …" Recently Added sections) vs. the new ones
+
+### M19: Airing schedule & Seerr requests (D35, D36)
+- [x] AnimeSchedule data layer (`api/schedule.ts`): timetable (all air types, merged ISO weeks), show details; dev + nginx pass-through proxy
+- [x] Per-profile app id / token in Settings → Integrations (checked with one request before saving); "Schedule" header link only when a token is set
+- [x] Schedule page: 7 day columns (Monday / Sunday / Saturday first or rotating; sideways scroll when narrow), today highlighted, week navigation; entries are the shared `MediaTile` at the profile's card size (RAW/SUB/DUB in the marker corner, title, time · episode, delays)
+- [x] One tile per row in each day column; details popup centred with the series page's poster size
+- [x] Shows already in the library get a Jellyfin-blue border and open their series page directly (no popup). Matched **by title** (D37)
+- [x] Settings & filters: air types, hide raw/sub/dub when another version exists, images, donghua, sort (time / alphabetical / unaired first), platforms include/exclude, media types, total / aired episode ranges
+- [x] Details dialog (`?anime=` in the URL): names, airings this week, season, status, episodes, premieres, studios, source, genres, description (HTML → text), streams, external links
+- [ ] Verify the nginx proxy in the built image (resolver from `/etc/resolv.conf`)
+- [ ] Seerr: connection settings, map AnimeSchedule → MAL / AniList → TMDB (Fribb anime-lists), "in library" / "requested" state, real **Request with Seerr** (button is a placeholder now)
+- [ ] Not possible with the app token: "Popularity" sort (not in the timetable data), Anime List filter (needs AnimeSchedule OAuth)
 ---
 
 ## 5. Open questions

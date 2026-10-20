@@ -1,14 +1,9 @@
 import { NavLink } from 'react-router'
 import { usePref } from '@/api/prefs-context'
 import { useLibraries } from '@/api/queries/libraries'
+import { headerLinkClass as LINK } from '@/components/headerLink'
 import { isBrowsable } from '@/domain/library'
 import { NAV_HOME } from '@/domain/prefs'
-
-// Full header height. Active: the blue of the page's background glow; hover: the light-blue ring used on tiles.
-const LINK = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center px-3 text-sm font-bold whitespace-nowrap ring-accent-400 ring-inset transition hover:ring-2 focus-visible:ring-2 focus-visible:outline-none ${
-    isActive ? 'bg-[#00A4DC]/22 text-white' : 'text-neutral-400 hover:text-neutral-100'
-  }`
 
 /** Header navigation: Home + one link per video library. */
 export function LibraryNav() {

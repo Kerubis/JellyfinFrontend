@@ -25,16 +25,23 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
-      proxy: target
-        ? {
-            '/jellyfin': {
-              target,
-              changeOrigin: true,
-              ws: true,
-              rewrite: (path) => path.replace(/^\/jellyfin/, ''),
-            },
-          }
-        : undefined,
+      proxy: {
+        ...(target && {
+          '/jellyfin': {
+            target,
+            changeOrigin: true,
+            ws: true,
+            rewrite: (path) => path.replace(/^\/jellyfin/, ''),
+          },
+        }),
+        // AnimeSchedule.net sends no CORS headers; the browser's request (with the profile's token) is passed
+        // through. The image does the same in nginx (docker/nginx.conf).
+        '/animeschedule': {
+          target: 'https://animeschedule.net',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/animeschedule/, '/api/v3'),
+        },
+      },
     },
   }
 })

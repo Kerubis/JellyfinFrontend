@@ -16,6 +16,8 @@ import { MoviePage } from '@/features/movies/MoviePage'
 import { PlayerOverlay } from '@/features/player/PlayerOverlay'
 import { PlayerProvider } from '@/features/player/PlayerProvider'
 import { SearchBox } from '@/features/search/SearchBox'
+import { ScheduleLink } from '@/features/schedule/ScheduleLink'
+import { SchedulePage } from '@/features/schedule/SchedulePage'
 import { SearchPage } from '@/features/search/SearchPage'
 import { EpisodeRedirect } from '@/features/series/EpisodePanel'
 import { SeriesPage } from '@/features/series/SeriesPage'
@@ -36,6 +38,7 @@ export default function App() {
           nav={<LibraryNav />}
           actions={
             <>
+              <ScheduleLink />
               <SearchBox />
               <TimeLeftChip />
               <LibraryScanButton />
@@ -52,6 +55,7 @@ export default function App() {
             <Route path="episode/:episodeId" element={<EpisodeRedirect />} />
             <Route path="library/:libraryId" element={<LibraryPage />} />
             <Route path="search" element={<SearchPage />} />
+            <Route path="schedule" element={<SchedulePage />} />
             <Route path="item/:itemId" element={<MoviePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

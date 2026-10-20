@@ -32,7 +32,7 @@ export function Layout({ nav, actions, children }: Props) {
           <span className="bg-gradient-to-r from-[#AA5CC3] to-[#00A4DC] bg-clip-text text-sm font-semibold text-transparent">Jellyfin</span>
         </Link>
         {nav}
-        <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="ml-auto flex shrink-0 items-center gap-2 self-stretch">{actions}</div>
       </header>
       {/* Right padding keeps cards clear of the 20 px scrollbar rail on narrow screens. */}
       <main className="flex-1 px-4 py-4 max-sm:pr-7 sm:px-6 lg:px-10">
