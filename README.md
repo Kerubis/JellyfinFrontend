@@ -1,54 +1,70 @@
 # JellyfinFrontend
 
-A dense, fast, personal web client for Jellyfin. Jellyfin stays the backend; this replaces only the UI.
+A dense, fast web client for Jellyfin. Jellyfin stays your server (libraries, metadata, transcoding, users, watch
+state); this only replaces the web interface.
 
-- Project goals and rules: [CLAUDE.md](CLAUDE.md)
-- Plan and task tracker: [PLAN.md](PLAN.md)
+> **Vibecoded.** This project is written almost entirely by an AI coding assistant (Claude Code), steered and
+> tested by a human. It works well for its author, but expect rough edges, and use it at your own risk.
 
-## Development
+## Features
 
-```sh
-cp .env.example .env.local   # set JELLYFIN_URL to your server
-npm install
-npm run dev                  # API is proxied via /jellyfin → JELLYFIN_URL
-npm run build
-npm run lint
-```
+- **Dense layout**: small cards and tight grids, so you see many titles at once with little scrolling.
+- **Home that tracks what you watch**: *Currently Watching* always has the shows you're in the middle of, sorted
+  by what you watched last; new episodes of shows you set aside appear under *New Episodes*. Sections can be
+  rearranged, renamed and hidden per device.
+- **Playback that never throws you out**: the player shrinks to a mini player while you keep browsing.
+- **Made for anime**: styled ASS/SSA subtitles with the file's own fonts, smart audio / subtitle language
+  rules per library and per series, skip intro / outro, autoplay of the next episode.
+- **Library browsing and search**: filters, sorting, an A–Z jump bar, movie detail pages.
+- **Airing schedule**: the week's anime from AnimeSchedule.net, with shows in your library highlighted.
+- **Requests with Seerr**: search any movie or show and request it, with the right server (e.g. a separate anime
+  Sonarr) and HD or 4K.
+- **Profiles and kids**: switch between Jellyfin users; kid mode, daily watch time and bedtime limits.
+- **Server administration**: users, libraries, scheduled tasks, plugins, devices, backups and logs, all inside the
+  app, with no need for the official web interface.
 
-## Docker / Unraid
+## Install on Unraid
 
-The image `ghcr.io/kerubis/jellyfinfrontend` is built by GitHub Actions ([docker.yml](.github/workflows/docker.yml)) **only for version tags**. `latest` always points to the newest release, so Unraid's "Check for updates" only shows actual releases.
+You need a Jellyfin server (10.10 or newer) that your devices can reach.
 
-### Release a new version
-
-```sh
-git tag v0.2.0
-git push origin v0.2.0      # builds and pushes :0.2.0, :0.2 and :latest (~2-3 min, see the Actions tab)
-```
-
-Then in Unraid: Docker → Check for updates → apply update. The version is shown next to the "Settings" heading.
-
-### First-time setup
-
-1. Push the first tag (above). After the build, on GitHub go to your profile → Packages → `jellyfinfrontend` → Package settings → change visibility to **Public** (once; Unraid pulls without a login then).
-2. On Unraid, save [unraid/jellyfin-frontend.xml](unraid/jellyfin-frontend.xml) as `/boot/config/plugins/dockerMan/templates-user/my-JellyfinFrontend.xml`, e.g.
-   ```sh
-   wget -O /boot/config/plugins/dockerMan/templates-user/my-JellyfinFrontend.xml \
-     https://raw.githubusercontent.com/Kerubis/JellyfinFrontend/master/unraid/jellyfin-frontend.xml
+1. **Add the template repository** (once): in Unraid, open **Docker → Add Container**, scroll down to
+   **Template Repositories**, add this line and click **Save**:
    ```
-3. Docker → Add Container → Template: `JellyfinFrontend`.
-   - Network type `br0`, set a **fixed IP address**.
-   - **Jellyfin server URL**: how the *browser* reaches Jellyfin, e.g. `http://172.16.100.12:8096`.
-4. Open `http://<container IP>/`.
+   https://github.com/Kerubis/JellyfinFrontend
+   ```
+2. **Create the container**: still in **Add Container**, pick **JellyfinFrontend** from the **Template** list.
+3. **Set it up**:
+   - **Network Type**: `br0` (Custom), and give it a **Fixed IP address**, so it doesn't clash with ports already
+     in use on your server.
+   - **Jellyfin server URL**: the address your *browser* uses for Jellyfin, e.g. `http://192.168.1.10:8096`.
+4. Click **Apply**, then open `http://<the container's IP>/` and sign in with your Jellyfin account.
 
-### How it works
+If the template doesn't show up, you can also download it directly from the Unraid terminal and then pick it as in
+step 2:
 
-- nginx serves the static build; unknown paths fall back to `index.html` (client-side routes).
-- At container start, [docker/40-jff-config.sh](docker/40-jff-config.sh) writes `JELLYFIN_URL` into `/config.js`; the app connects to it without the server setup screen (the form still appears if the server can't be reached).
-- The browser talks to Jellyfin directly (Jellyfin allows cross-origin requests by default). If the frontend is ever served over HTTPS, Jellyfin must be reachable over HTTPS too, or the browser blocks the requests (mixed content).
-- `/animeschedule/*` passes GET requests through to the AnimeSchedule.net API (it sends no CORS headers) for the Schedule page. Each profile enters its own app token in Settings → Integrations; nginx only forwards it.
-- Health check: `GET /health`.
+```sh
+wget -O /boot/config/plugins/dockerMan/templates-user/my-JellyfinFrontend.xml \
+  https://raw.githubusercontent.com/Kerubis/JellyfinFrontend/master/unraid/jellyfin-frontend.xml
+```
+
+**Updates**: Docker → **Check for Updates**, then apply. The installed version is shown next to the *Settings*
+heading in the app.
+
+### Optional: schedule and requests
+
+- **Airing schedule**: create a free API application on
+  [AnimeSchedule.net](https://animeschedule.net/users/settings/api) and enter its id and token in
+  **Settings → Integrations**. Each profile uses its own token.
+- **Seerr requests**: an admin enters the Seerr address and API key (Seerr → Settings → General) in
+  **Settings → Administration → Seerr**, picks which profiles may request and where requests go. Users must be
+  imported in Seerr.
 
 ## Credits
 
-Icons from [Material Symbols](https://fonts.google.com/icons) by Google, Apache License 2.0 (paths copied into the components, no package).
+- Icons from [Material Symbols](https://fonts.google.com/icons) by Google, Apache License 2.0.
+- Airing data from [AnimeSchedule.net](https://animeschedule.net), anime id mapping from
+  [Fribb/anime-lists](https://github.com/Fribb/anime-lists).
+
+## License
+
+GPL-3.0, see [LICENSE](LICENSE).

@@ -15,6 +15,8 @@ import { LibraryPage } from '@/features/library/LibraryPage'
 import { MoviePage } from '@/features/movies/MoviePage'
 import { PlayerOverlay } from '@/features/player/PlayerOverlay'
 import { PlayerProvider } from '@/features/player/PlayerProvider'
+import { RequestLink } from '@/features/requests/RequestLink'
+import { RequestsPage } from '@/features/requests/RequestsPage'
 import { SearchBox } from '@/features/search/SearchBox'
 import { ScheduleLink } from '@/features/schedule/ScheduleLink'
 import { SchedulePage } from '@/features/schedule/SchedulePage'
@@ -39,6 +41,7 @@ export default function App() {
           actions={
             <>
               <ScheduleLink />
+              <RequestLink />
               <SearchBox />
               <TimeLeftChip />
               <LibraryScanButton />
@@ -56,6 +59,7 @@ export default function App() {
             <Route path="library/:libraryId" element={<LibraryPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="schedule" element={<SchedulePage />} />
+            <Route path="requests" element={<RequestsPage />} />
             <Route path="item/:itemId" element={<MoviePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

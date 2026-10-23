@@ -17,6 +17,7 @@ import { BRANDING, GENERAL, LIBRARY_DISPLAY, METADATA_DEFAULTS, METADATA_SAVING,
 import { ApiKeysSection, DevicesSection } from './admin/DevicesSection'
 import { CatalogSection, InstalledPluginsSection, RepositoriesSection } from './admin/PluginsSection'
 import { RestartNotice } from './admin/RestartNotice'
+import { SeerrSection } from './admin/SeerrSection'
 import { LibrariesSection } from './admin/LibrariesSection'
 import { TwoColumns } from './admin/parts'
 import { AvatarSection, PasswordSection, QuickConnectSection } from './AccountSections'
@@ -193,6 +194,7 @@ const PAGES: (Page & { visible?: (v: Visibility) => boolean })[] = [
     wide: true,
     content: () => <TwoColumns left={<DevicesSection />} right={<ApiKeysSection />} />,
   },
+  { id: 'seerr', group: 'admin', label: 'Seerr', content: () => <SeerrSection />, visible: (v) => v.isAdmin },
   { id: 'backups', group: 'admin', label: 'Backups', content: () => <BackupsSection />, visible: (v) => v.isAdmin },
   { id: 'activity', group: 'admin', label: 'Activity & logs', content: () => <ActivityAndLogs />, visible: (v) => v.isAdmin, wide: true },
   {

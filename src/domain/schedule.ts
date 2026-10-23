@@ -60,6 +60,9 @@ export type AnimeDetails = {
   mediaTypes: Category[]
   streams: ScheduleStream[]
   links: { label: string; url: string }[]
+  /** For the TMDB mapping (Seerr requests). */
+  malId?: number
+  anilistId?: number
 }
 
 export type WeekStart = 'monday' | 'sunday' | 'saturday' | 'rotating'
@@ -104,6 +107,21 @@ export function episodeLabel(entry: ScheduleEntry): string {
 }
 
 const inRange = (value: number, [min, max]: [number, number]) => value >= min && (max >= EPISODE_RANGE_MAX || value <= max)
+
+/**
+ * Entries whose title (any language) or one of whose genres (by route) contains the search text; case, spaces and
+ * punctuation don't matter.
+ */
+export function searchSchedule(
+  entries: readonly ScheduleEntry[],
+  query: string,
+  genres: ReadonlyMap<string, readonly string[]>,
+): readonly ScheduleEntry[] {
+  const key = titleKey(query)
+  if (!key) return entries
+  const matches = (text: string | undefined) => !!text && titleKey(text).includes(key)
+  return entries.filter((e) => [e.title, e.romaji, e.english, e.native].some(matches) || genres.get(e.route)?.some(matches))
+}
 
 /** The entries to show, sorted within each day by the chosen order. */
 export function filterSchedule(entries: readonly ScheduleEntry[], filters: ScheduleFilters): ScheduleEntry[] {

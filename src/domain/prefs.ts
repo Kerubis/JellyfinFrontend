@@ -6,6 +6,7 @@
 import { DEFAULT_SECTIONS, normalizeSections, type DashboardSection } from './dashboard'
 import { DEFAULT_SAFETY, HHMM, type SafetyPrefs, type SafetyUsage } from './safety'
 import { AIR_TYPES, EPISODE_RANGE_MAX, type ScheduleFilters } from './schedule'
+import { normalizeRouting, normalizeSeerrUrl, type SeerrConfig } from './seerr'
 import type { PartialRule, SubtitleMode, TrackMemory } from './tracks'
 import { normalizeLanguage } from '@/lib/languages'
 import type { TimeFormat } from '@/lib/time'
@@ -135,6 +136,8 @@ export type PrefsSchema = {
   schedule: ScheduleFilters
   /** AnimeSchedule.net API application of this profile (Settings → Integrations); empty token = schedule off. */
   animeSchedule: { appId: string; token: string }
+  /** Seerr server; written by an admin into each profile allowed to request (Settings → Seerr). */
+  seerr: SeerrConfig
 }
 
 export type PrefKey = keyof PrefsSchema
@@ -260,6 +263,11 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
     version: 1,
     defaults: { appId: '', token: '' },
     normalize: (v) => ({ appId: v.appId.trim(), token: v.token.trim() }),
+  },
+  seerr: {
+    version: 1,
+    defaults: { url: '', apiKey: '', routing: {} },
+    normalize: (v) => ({ url: normalizeSeerrUrl(v.url), apiKey: v.apiKey.trim(), routing: normalizeRouting(v.routing) }),
   },
   schedule: {
     version: 1,

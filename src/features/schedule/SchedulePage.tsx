@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { usePref } from '@/api/prefs-context'
 import { useSeriesCatalog } from '@/api/queries/home'
-import { useLibraryMatcher, useScheduleToken, useTimetable } from '@/api/schedule'
+import { useLibraryMatcher, useScheduleGenres, useScheduleToken, useTimetable } from '@/api/schedule'
 import { Button } from '@/components/Button'
 import type { CardSize } from '@/domain/prefs'
 import {
@@ -10,6 +10,7 @@ import {
   dayKey,
   filterSchedule,
   isoWeek,
+  searchSchedule,
   weekWindowStart,
   type LibrarySeries,
   type ScheduleEntry,
@@ -58,6 +59,8 @@ export function SchedulePage() {
   // The selected show and the week offset live in the URL, so Back closes the details / returns to the week.
   const route = params.get('anime')
   const offset = Number(params.get('week') ?? 0) || 0
+  // Only narrows what's loaded (not an API filter); in the URL so it survives opening a show and coming back.
+  const query = params.get('q') ?? ''
 
   const enabled = useScheduleToken() !== ''
   const todayKey = useTodayKey()
@@ -72,14 +75,16 @@ export function SchedulePage() {
   const timetable = useTimetable(weeks)
 
   const all = timetable.data
+  const routes = useMemo(() => [...new Set((all ?? []).map((e) => e.route))], [all])
+  const genres = useScheduleGenres(routes, query.trim() !== '')
   const byDay = useMemo(() => {
     const map = new Map<string, ScheduleEntry[]>()
-    for (const entry of filterSchedule(all ?? [], filters)) {
+    for (const entry of filterSchedule(searchSchedule(all ?? [], query, genres), filters)) {
       const key = dayKey(new Date(entry.airsAt))
       map.set(key, [...(map.get(key) ?? []), entry])
     }
     return map
-  }, [all, filters])
+  }, [all, filters, query, genres])
   const matchLibrary = useLibraryMatcher()
   const catalog = useSeriesCatalog()
   const libraryMatches = useMemo(() => {
@@ -168,7 +173,7 @@ export function SchedulePage() {
           ›
         </Button>
         <span className="text-xs text-neutral-400">{range}</span>
-        {!timetable.isPending && <span className="text-xs text-neutral-500">{total} shown</span>}
+        {!timetable.isPending && <span className="text-xs text-neutral-500">{total} shown{query && ` matching “${query}”`}</span>}
         <span className="ml-auto flex items-center gap-3">
           <a href="https://animeschedule.net" target="_blank" rel="noreferrer" className="text-[11px] text-neutral-500 hover:text-neutral-300">
             Data: AnimeSchedule.net
@@ -178,6 +183,16 @@ export function SchedulePage() {
           </Button>
         </span>
       </div>
+
+      <input
+        type="search"
+        value={query}
+        placeholder="Search titles or genres"
+        aria-label="Search the schedule by title or genre"
+        onChange={(e) => setParam('q', e.target.value || null, true)}
+        onKeyDown={(e) => e.key === 'Escape' && query && setParam('q', null, true)}
+        className="w-full self-center rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none sm:w-80"
+      />
 
       {showFilters && <ScheduleFiltersPanel filters={filters} update={update} platforms={platforms} />}
 
@@ -208,7 +223,7 @@ export function SchedulePage() {
                   </span>
                 </h2>
                 {timetable.isPending && <p className="px-0.5 text-[11px] text-neutral-500">Loading…</p>}
-                {!timetable.isPending && entries.length === 0 && <p className="px-0.5 text-[11px] text-neutral-600">Nothing airs</p>}
+                {!timetable.isPending && entries.length === 0 && <p className="px-0.5 text-[11px] text-neutral-600">{query ? 'No match' : 'Nothing airs'}</p>}
                 {entries.length > 0 && (
                   <EntryList images={filters.images}>
                     {entries.map((entry) => {

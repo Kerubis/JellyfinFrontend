@@ -14,7 +14,7 @@
   <Overview>Dense, fast web client for Jellyfin. Jellyfin stays the backend; this container only serves the UI. Set "Fixed IP address" for br0 and the Jellyfin server URL below.</Overview>
   <Category>MediaServer:Video</Category>
   <WebUI>http://[IP]:[PORT:80]/</WebUI>
-  <Icon>https://raw.githubusercontent.com/Kerubis/JellyfinFrontend/master/public/favicon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Kerubis/JellyfinFrontend/master/public/icon-256.png</Icon>
   <ExtraParams/>
   <Config Name="Jellyfin server URL" Target="JELLYFIN_URL" Default="" Mode="" Description="Address of your Jellyfin server as the browser reaches it, e.g. http://192.168.1.10:8096. Devices connect to it without a setup screen." Type="Variable" Display="always" Required="true" Mask="false"/>
   <Config Name="WebUI port" Target="80" Default="80" Mode="tcp" Description="nginx inside the container. On br0 the container has its own IP, so this is not mapped; open http://[container IP]/." Type="Port" Display="advanced" Required="false" Mask="false">80</Config>

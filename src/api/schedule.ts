@@ -199,7 +199,15 @@ function toDetails(dto: AnimeDto, route: string): AnimeDetails {
     mediaTypes: toCategories(dto.mediaTypes),
     streams: toStreams(w.streams),
     links,
+    malId: idOf(w.mal),
+    anilistId: idOf(w.aniList),
   }
+}
+
+/** The numeric id in a website field ("12345" or "myanimelist.net/anime/12345/…"). */
+function idOf(value: string | undefined): number | undefined {
+  const id = value && (/^\d+$/.test(value) ? value : /\/anime\/(\d+)/.exec(value)?.[1])
+  return id ? Number(id) : undefined
 }
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -238,13 +246,57 @@ export function useTimetable(weeks: readonly { year: number; week: number }[]) {
 
 export function useAnimeDetails(route: string | null) {
   const token = useScheduleToken()
-  return useQuery({
-    queryKey: ['animeschedule', token, 'anime', route],
-    queryFn: async () => toDetails(await get<AnimeDto>(token, `/anime/${encodeURIComponent(route ?? '')}`), route ?? ''),
-    enabled: token !== '' && route !== null,
+  return useQuery({ ...animeDetailsQuery(token, route ?? ''), enabled: token !== '' && route !== null })
+}
+
+const animeDetailsQuery = (token: string, route: string) => ({
+  queryKey: ['animeschedule', token, 'anime', route],
+  queryFn: async () => toDetails(await get<AnimeDto>(token, `/anime/${encodeURIComponent(route)}`), route),
+  staleTime: 6 * 60 * 60_000,
+  retry,
+})
+
+type AnimeListDto = { totalAmount?: number; anime?: AnimeDto[] }
+
+/** Genre names of every currently airing show, by route (the list endpoint, 18 shows per page, ~10 pages). */
+async function fetchAiringGenres(token: string): Promise<Map<string, string[]>> {
+  const page = (n: number) => get<AnimeListDto>(token, `/anime?airing-statuses=ongoing&page=${n}`)
+  const first = await page(1)
+  const size = first.anime?.length || 1
+  // Capped well below the rate limit (120 / min) in case the API ever reports something odd.
+  const pages = Math.min(20, Math.ceil((first.totalAmount ?? 0) / size))
+  const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => page(i + 2)))
+  const genres = new Map<string, string[]>()
+  for (const dto of [first, ...rest].flatMap((p) => p.anime ?? [])) {
+    if (dto.route) genres.set(dto.route, toCategories(dto.genres).map((g) => g.name))
+  }
+  return genres
+}
+
+/**
+ * Genre names of the given shows, by route, for the schedule search: the airing list, plus single lookups (shared
+ * with the details popup) for shows that aren't airing anymore or yet (premieres, finales, other weeks). Only loads
+ * while `enabled`; shows whose genres haven't loaded yet are simply missing.
+ */
+export function useScheduleGenres(routes: readonly string[], enabled: boolean): ReadonlyMap<string, readonly string[]> {
+  const token = useScheduleToken()
+  const airing = useQuery({
+    queryKey: ['animeschedule', token, 'airingGenres'],
+    queryFn: () => fetchAiringGenres(token),
+    enabled: enabled && token !== '',
     staleTime: 6 * 60 * 60_000,
     retry,
   })
+  const missing = airing.data ? routes.filter((r) => !airing.data.has(r)) : []
+  const single = useQueries({
+    queries: missing.map((route) => ({ ...animeDetailsQuery(token, route), enabled: enabled && token !== '' })),
+    combine: (results) => results.map((r) => r.data),
+  })
+  return useMemo(() => {
+    const genres = new Map(airing.data)
+    for (const details of single) if (details) genres.set(details.route, details.genres.map((g) => g.name))
+    return genres
+  }, [airing.data, single])
 }
 
 /** The profile's AnimeSchedule app token; empty = schedule not set up. */

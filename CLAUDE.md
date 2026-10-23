@@ -98,4 +98,5 @@ The detailed, up-to-date milestone list and task tracker is in [PLAN.md](PLAN.md
 - Before implementing a feature, briefly propose the approach and ask when a decision is unclear.
 - Verify Jellyfin API behavior against the swagger docs and the real server rather than assuming.
 - Jellyfin server URL: `http://172.16.100.12:8096` (was .228 until 2026-10-17) ("Kerubis Jellyfin", version 12.2.0). Dev proxy target is set in `.env.local`.
+- Seerr: `http://172.16.100.38:5055` (v3.5.1, Jellyfin login). Configured in the app by an admin (PLAN.md D38), not in the container.
 - Test user / library notes: libraries `Anime`, `Tv` (tvshows) and `Movies`. User `Kerubis` has no watch history yet; `admin` has the real history (~1600 played episodes), so use admin's user id for read-only checks of watch-state logic. `.env.local` has `JELLYFIN_TEST_API_KEY` / `JELLYFIN_TEST_USER` for terminal checks (`Authorization: MediaBrowser Token="…"`).
