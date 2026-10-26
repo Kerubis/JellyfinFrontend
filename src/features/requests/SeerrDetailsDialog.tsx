@@ -1,10 +1,15 @@
 import { Link } from 'react-router'
 import { useSeerrConfig, useSeerrMedia } from '@/api/seerr'
-import { Chips, DetailRow as Row, DetailsDialog } from '@/components/DetailsDialog'
-import { libraryPath, type SeerrKind } from '@/domain/seerr'
+import { Chips, DetailRow as Row, DetailsDialog, LinkChips } from '@/components/DetailsDialog'
+import { browseLink, libraryPath, type SeerrKind } from '@/domain/seerr'
 import { SeerrPanel } from './SeerrPanel'
 
-/** Details of a movie or show from Seerr, with its request state per season. */
+const KEYWORDS_SHOWN = 15
+
+/**
+ * Details of a movie or show from Seerr, with its request state per season. Keywords, people, studios (movies) and
+ * networks (TV) open the request page's browse views.
+ */
 export function SeerrDetailsDialog({ target, onClose }: { target: { kind: SeerrKind; tmdbId: number }; onClose: () => void }) {
   const config = useSeerrConfig()
   const media = useSeerrMedia(target)
@@ -43,10 +48,34 @@ export function SeerrDetailsDialog({ target, onClose }: { target: { kind: SeerrK
               </Row>
             )}
             {m.runtime && <Row label={m.kind === 'movie' ? 'Runtime' : 'Episode length'}>{m.runtime} min</Row>}
-            {m.networks.length > 0 && <Row label="Network">{m.networks.join(', ')}</Row>}
+            {m.networks.length > 0 && (
+              <Row label="Network">
+                <LinkChips items={m.networks.map((n) => ({ key: n.id, label: n.name, to: browseLink.network(n.id) }))} />
+              </Row>
+            )}
+            {m.studios.length > 0 && (
+              <Row label="Studio">
+                {/* Seerr can only browse movies by studio. */}
+                {m.kind === 'movie' ? (
+                  <LinkChips items={m.studios.map((s) => ({ key: s.id, label: s.name, to: browseLink.studio(s.name) }))} />
+                ) : (
+                  <Chips items={m.studios.map((s) => s.name)} />
+                )}
+              </Row>
+            )}
             {m.genres.length > 0 && (
               <Row label="Genres">
                 <Chips items={m.genres} />
+              </Row>
+            )}
+            {m.credits.map((group) => (
+              <Row key={group.label} label={group.label}>
+                <LinkChips items={group.people.map((p) => ({ key: p.id, label: p.name, to: browseLink.person(p.name) }))} />
+              </Row>
+            ))}
+            {m.keywords.length > 0 && (
+              <Row label="Keywords">
+                <LinkChips items={m.keywords.slice(0, KEYWORDS_SHOWN).map((k) => ({ key: k.id, label: k.name, to: browseLink.keyword(k.name) }))} />
               </Row>
             )}
           </dl>

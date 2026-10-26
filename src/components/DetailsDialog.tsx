@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router'
 
 /**
  * Popup for a title that isn't (necessarily) in the library: poster on the left, `children` on the right.
@@ -56,6 +57,19 @@ export function Chips({ items }: { items: readonly string[] }) {
         <span key={item} className="rounded bg-neutral-700 px-2 py-0.5 text-xs text-neutral-200">
           {item}
         </span>
+      ))}
+    </span>
+  )
+}
+
+/** Chips that link somewhere in the app (keywords, people, studios). */
+export function LinkChips({ items }: { items: readonly { key: string | number; label: string; to: string }[] }) {
+  return (
+    <span className="flex flex-wrap gap-1.5 py-0.5">
+      {items.map((item) => (
+        <Link key={item.key} to={item.to} className="rounded bg-neutral-700 px-2 py-0.5 text-xs text-neutral-200 hover:bg-accent-700 hover:text-white">
+          {item.label}
+        </Link>
       ))}
     </span>
   )

@@ -11,6 +11,8 @@ export type SeriesDetails = {
   genres: string[]
   communityRating?: number
   officialRating?: string
+  /** For Seerr lookups. */
+  tmdbId?: number
 }
 
 export type Season = {

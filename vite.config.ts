@@ -7,7 +7,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 // Seerr pass-through (dev): the target is the profile's Seerr server from the X-Seerr-Url header, so a fixed proxy
 // target doesn't work. Same rules as docker/nginx.conf: http(s)://host[:port] only, GET/POST, the endpoints the app uses.
 const SEERR_TARGET = /^https?:\/\/[A-Za-z0-9.:[\]-]+$/
-const SEERR_PATH = /^\/(auth\/me|search|request|movie\/\d+|tv\/\d+|user\/jellyfin\/[0-9a-fA-F-]+|service\/(sonarr|radarr)(\/\d+)?)(\?.*)?$/
+const SEERR_PATH = /^\/(auth\/me|search(\/(keyword|company))?|request|movie\/\d+|tv\/\d+|discover\/(movies|tv)|person\/\d+(\/combined_credits)?|(keyword|studio|network)\/\d+|user\/jellyfin\/[0-9a-fA-F-]+|service\/(sonarr|radarr)(\/\d+)?)(\?.*)?$/
 
 async function forwardToSeerr(req: IncomingMessage, res: ServerResponse) {
   const target = req.headers['x-seerr-url']

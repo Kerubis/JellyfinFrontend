@@ -3,7 +3,7 @@
 // The URL and API key are written by an admin into each profile allowed to request (synced pref `seerr`, D38);
 // requests are made as the profile's own Seerr user (looked up by Jellyfin user id).
 
-import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   buildAnimeIdIndex,
   isAnime,
@@ -19,9 +19,22 @@ import {
   type SeerrResult,
   type SeerrSeason,
   type SeerrServer,
+  type SeerrBrowse,
+  type SeerrCompany,
+  type SeerrCredit,
+  type SeerrCreditGroup,
+  type SeerrKeyword,
+  type SeerrMatch,
+  RATED_MIN_VOTES,
+  type SeerrPerson,
+  type SeerrPersonDetails,
+  type SeerrPersonRef,
   type SeerrServerOptions,
+  type SeerrService,
+  type SeerrSort,
   type SeerrStatus,
 } from '@/domain/seerr'
+import { sameName, type TokenKind } from '@/domain/searchQuery'
 import { usePref } from './prefs-context'
 import { fetchProfilePrefs, writeProfilePrefs } from './prefs'
 import { useSignedIn } from './session-context'
@@ -31,6 +44,7 @@ const BASE = '/seerr'
 const FRIBB_URL = 'https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-mini.json'
 /** Seerr returns TMDB image paths; posters load straight from TMDB's image server (Seerr's own default too). */
 const TMDB_POSTER = 'https://image.tmdb.org/t/p/w342'
+const TMDB_PROFILE = 'https://image.tmdb.org/t/p/w185'
 
 export class SeerrApiError extends Error {
   readonly status: number
@@ -95,11 +109,19 @@ type MediaInfoDto = {
   status?: number
   status4k?: number
   jellyfinMediaId?: string | null
+  serviceId?: number | null
+  serviceId4k?: number | null
+  /** Built by Seerr from the server's (external) address; null / absent when not in Sonarr / Radarr. */
+  serviceUrl?: string | null
+  serviceUrl4k?: string | null
   seasons?: SeasonStateDto[]
   requests?: RequestDto[]
 }
 type SeasonDto = { seasonNumber?: number; name?: string; episodeCount?: number }
 type NamedDto = { name?: string }
+type IdNameDto = { id?: number; name?: string }
+type CastDto = IdNameDto & { character?: string; order?: number }
+type CrewDto = IdNameDto & { job?: string; department?: string }
 type DetailsDto = {
   id?: number
   name?: string
@@ -109,16 +131,40 @@ type DetailsDto = {
   posterPath?: string | null
   overview?: string
   genres?: NamedDto[]
-  keywords?: { id?: number }[]
+  keywords?: IdNameDto[]
   originalLanguage?: string
   runtime?: number
   episodeRunTime?: number[]
   status?: string
-  networks?: NamedDto[]
+  networks?: IdNameDto[]
+  productionCompanies?: IdNameDto[]
+  createdBy?: IdNameDto[]
+  credits?: { cast?: CastDto[]; crew?: CrewDto[] }
   seasons?: SeasonDto[]
   mediaInfo?: MediaInfoDto
 }
-type SearchDto = { page?: number; totalPages?: number; results?: (DetailsDto & { mediaType?: string })[] }
+// Person hits come mixed in with the titles.
+type SearchHitDto = DetailsDto & {
+  mediaType?: string
+  profilePath?: string | null
+  popularity?: number
+  knownFor?: { title?: string; name?: string }[]
+}
+type SearchDto = { page?: number; totalPages?: number; results?: SearchHitDto[] }
+type DiscoverDto = { page?: number; totalPages?: number; totalResults?: number; results?: DetailsDto[] }
+// Keyword and company search pass TMDB's own response through (snake_case).
+type TmdbSearchDto = { results?: IdNameDto[] }
+type PersonDto = IdNameDto & { profilePath?: string | null; knownForDepartment?: string }
+type CreditDto = DetailsDto & {
+  mediaType?: string
+  adult?: boolean
+  popularity?: number
+  voteAverage?: number
+  voteCount?: number
+  job?: string
+  character?: string
+}
+type CombinedCreditsDto = { cast?: CreditDto[]; crew?: CreditDto[] }
 type RequestListDto = { results?: (RequestDto & { id?: number; createdAt?: string; media?: MediaInfoDto })[] }
 type UserDto = { id?: number; displayName?: string; username?: string; jellyfinUsername?: string }
 // Seerr's trimmed server list (/service/sonarr, /service/radarr): no addresses or API keys.
@@ -165,6 +211,28 @@ function toResult(kind: SeerrKind, dto: DetailsDto): SeerrResult {
 
 const names = (list: NamedDto[] | undefined) => (list ?? []).flatMap((x) => (x.name ? [x.name] : []))
 
+/** Entries with an id and a name, each id once. */
+function refs(list: IdNameDto[] | undefined): SeerrPersonRef[] {
+  const seen = new Set<number>()
+  return (list ?? []).flatMap((x) => (x.id !== undefined && x.name && !seen.has(x.id) && seen.add(x.id) ? [{ id: x.id, name: x.name }] : []))
+}
+
+// Jobs worth naming in the popup; the rest of the crew (art, sound, …) is left out.
+const DIRECTING = /^(director|series director|chief director)$/i
+const CAST_SHOWN = 8
+
+function creditGroups(dto: DetailsDto): SeerrCreditGroup[] {
+  const crew = dto.credits?.crew ?? []
+  const cast = [...(dto.credits?.cast ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).slice(0, CAST_SHOWN)
+  const groups = [
+    { label: 'Created by', people: refs(dto.createdBy) },
+    { label: 'Directed by', people: refs(crew.filter((c) => c.job && DIRECTING.test(c.job))) },
+    { label: 'Writing', people: refs(crew.filter((c) => c.department === 'Writing')) },
+    { label: 'Cast', people: refs(cast) },
+  ]
+  return groups.filter((g) => g.people.length > 0)
+}
+
 function toMedia(kind: SeerrKind, dto: DetailsDto): SeerrMedia {
   const info = dto.mediaInfo
   const seasons = (dto.seasons ?? []).flatMap((s): SeerrSeason[] => {
@@ -190,14 +258,29 @@ function toMedia(kind: SeerrKind, dto: DetailsDto): SeerrMedia {
     genres: names(dto.genres),
     runtime: dto.runtime || dto.episodeRunTime?.[0] || undefined,
     tmdbStatus: dto.status || undefined,
-    networks: names(dto.networks),
+    networks: refs(dto.networks) satisfies SeerrCompany[],
+    studios: refs(dto.productionCompanies) satisfies SeerrCompany[],
+    keywords: refs(dto.keywords) satisfies SeerrKeyword[],
+    credits: creditGroups(dto),
     anime: isAnime(
       (dto.keywords ?? []).flatMap((k) => (k.id ? [k.id] : [])),
       names(dto.genres),
       dto.originalLanguage,
     ),
     seasons,
+    services: services(info),
   }
+}
+
+const WEB_URL = /^https?:\/\//i
+
+function services(info: MediaInfoDto | undefined): SeerrService[] {
+  const all = [
+    { serverId: info?.serviceId ?? undefined, is4k: false, url: info?.serviceUrl },
+    { serverId: info?.serviceId4k ?? undefined, is4k: true, url: info?.serviceUrl4k },
+  ]
+  // Only plain web links end up in an href.
+  return all.flatMap((s) => (s.url && WEB_URL.test(s.url) ? [{ ...s, url: s.url }] : []))
 }
 
 /** The profile's Seerr server; undefined when it isn't set up for this profile. */
@@ -275,6 +358,169 @@ export function useSeerrSearchResults(query: string) {
     enabled: !!config && query.length >= 2,
     staleTime: 60_000,
     retry,
+  })
+}
+
+function toPeople(results: SearchHitDto[] | undefined): SeerrPerson[] {
+  return (results ?? []).flatMap((r) =>
+    r.id && r.mediaType === 'person' && r.name
+      ? [{ id: r.id, name: r.name, photo: r.profilePath ? TMDB_PROFILE + r.profilePath : undefined, knownFor: r.knownFor?.map((k) => k.title ?? k.name).find(Boolean) }]
+      : [],
+  )
+}
+
+/** Matches for a name (TMDB's first page): keywords, studios, or people (from the mixed search, with popularity). */
+function nameSearch(config: Connection | undefined, kind: TokenKind, query: string) {
+  return queryOptions({
+    queryKey: ['seerr', config?.url, 'nameSearch', kind, query.toLowerCase()],
+    queryFn: async (): Promise<SeerrMatch[]> => {
+      if (kind === 'person') {
+        const data = await call<SearchDto>(config ?? NONE, `search?query=${encodeQuery(query)}`)
+        const popularity = new Map((data.results ?? []).map((r) => [r.id, r.popularity]))
+        return toPeople(data.results).map((p) => ({ id: p.id, name: p.name, photo: p.photo, detail: p.knownFor, popularity: popularity.get(p.id) }))
+      }
+      return refs((await call<TmdbSearchDto>(config ?? NONE, `search/${kind === 'keyword' ? 'keyword' : 'company'}?query=${encodeQuery(query)}`)).results)
+    },
+    enabled: !!config && query.length >= 2,
+    staleTime: 10 * 60_000,
+    retry,
+  })
+}
+
+/** Autocomplete for a token being typed; off without a kind. */
+export function useNameSearch(kind: TokenKind | undefined, query: string) {
+  const config = useSeerrConfig()
+  return useQuery({ ...nameSearch(config, kind ?? 'keyword', query), enabled: !!config && !!kind && query.length >= 2 })
+}
+
+export type TokenResolution = { state: 'pending' } | { state: 'missing' } | { state: 'error'; message: string } | { state: 'found'; id: number; name: string }
+
+/**
+ * The id behind each `#`, `@`, `$` token: an exact name match (any case). Names repeat on TMDB (six "Tom
+ * Holland"s, two "Toei Animation"s): people take the most popular, keywords and studios the oldest entry (lowest
+ * id), which is the established one (Toei's JP studio has the films, the US duplicate none).
+ */
+export function useResolvedTokens(tokens: readonly { kind: TokenKind; name: string }[]): TokenResolution[] {
+  const config = useSeerrConfig()
+  return useQueries({
+    queries: tokens.map((t) => nameSearch(config, t.kind, t.name)),
+    combine: (results) =>
+      results.map((r, i): TokenResolution => {
+        const token = tokens[i]
+        if (!token || token.name.length < 2) return { state: 'missing' }
+        if (r.error) return { state: 'error', message: r.error.message }
+        if (!r.data) return { state: 'pending' }
+        const exact = r.data.filter((m) => sameName(m.name, token.name))
+        const best =
+          token.kind === 'person'
+            ? exact.reduce<SeerrMatch | undefined>((a, b) => (!a || (b.popularity ?? 0) > (a.popularity ?? 0) ? b : a), undefined)
+            : exact.reduce<SeerrMatch | undefined>((a, b) => (!a || b.id < a.id ? b : a), undefined)
+        return best ? { state: 'found', id: best.id, name: best.name } : { state: 'missing' }
+      }),
+  })
+}
+
+/** Name for an id in the URL (the network chip). */
+export function useSeerrName(what: 'keyword' | 'studio' | 'network', id: number | undefined) {
+  const config = useSeerrConfig()
+  return useQuery({
+    queryKey: ['seerr', config?.url, 'name', what, id],
+    queryFn: async () => (await call<IdNameDto>(config ?? NONE, `${what}/${id}`)).name ?? `#${id}`,
+    enabled: !!config && id !== undefined,
+    staleTime: Infinity,
+    retry,
+  })
+}
+
+const SORT_BY: Record<SeerrSort, Record<SeerrKind, string>> = {
+  popular: { movie: 'popularity.desc', tv: 'popularity.desc' },
+  newest: { movie: 'primary_release_date.desc', tv: 'first_air_date.desc' },
+  rated: { movie: 'vote_average.desc', tv: 'vote_average.desc' },
+}
+
+/** Titles of one kind matching all browse filters, page by page. */
+export function useSeerrDiscover(kind: SeerrKind, browse: SeerrBrowse, sort: SeerrSort) {
+  const config = useSeerrConfig()
+  const params = new URLSearchParams({ sortBy: SORT_BY[sort][kind] })
+  // Comma = all keywords must match (TMDB); Seerr wants it encoded, which URLSearchParams does.
+  if (browse.keywords.length > 0) params.set('keywords', browse.keywords.join(','))
+  if (kind === 'movie' && browse.studio !== undefined) params.set('studio', String(browse.studio))
+  if (kind === 'tv' && browse.network !== undefined) params.set('network', String(browse.network))
+  if (sort === 'rated') params.set('voteCountGte', String(RATED_MIN_VOTES))
+  const path = `discover/${kind === 'tv' ? 'tv' : 'movies'}?${params}`
+  return useInfiniteQuery({
+    queryKey: ['seerr', config?.url, 'discover', path],
+    queryFn: async ({ pageParam }) => {
+      const data = await call<DiscoverDto>(config ?? NONE, `${path}&page=${pageParam}`)
+      return {
+        results: (data.results ?? []).flatMap((r) => (r.id ? [toResult(kind, r)] : [])),
+        total: data.totalResults ?? 0,
+        next: (data.page ?? 1) < (data.totalPages ?? 1) ? (data.page ?? 1) + 1 : undefined,
+      }
+    },
+    initialPageParam: 1,
+    getNextPageParam: (last) => last.next,
+    enabled: !!config,
+    staleTime: 10 * 60_000,
+    retry,
+  })
+}
+
+/** One credit list (cast or crew), each title once with all of the person's roles in it. */
+function toCredits(list: CreditDto[] | undefined, role: (c: CreditDto) => string | undefined): SeerrCredit[] {
+  const byTitle = new Map<string, SeerrCredit>()
+  for (const c of list ?? []) {
+    const kind = c.mediaType
+    if (!c.id || c.adult || (kind !== 'tv' && kind !== 'movie')) continue
+    const key = `${kind}-${c.id}`
+    const credit = byTitle.get(key) ?? {
+      ...toResult(kind, c),
+      roles: [],
+      popularity: c.popularity ?? 0,
+      date: (c.firstAirDate ?? c.releaseDate) || undefined,
+      rating: c.voteAverage,
+      votes: c.voteCount,
+    }
+    const name = role(c)?.trim()
+    if (name && !credit.roles.includes(name)) credit.roles.push(name)
+    byTitle.set(key, credit)
+  }
+  return [...byTitle.values()]
+}
+
+/** A person and the titles they worked on or appeared in. Credits carry no request state (Seerr leaves it out). */
+function personQuery(config: Connection | undefined, personId: number) {
+  return queryOptions({
+    queryKey: ['seerr', config?.url, 'person', personId],
+    queryFn: async (): Promise<SeerrPersonDetails> => {
+      const [person, credits] = await Promise.all([
+        call<PersonDto>(config ?? NONE, `person/${personId}`),
+        call<CombinedCreditsDto>(config ?? NONE, `person/${personId}/combined_credits`),
+      ])
+      return {
+        id: personId,
+        name: person.name ?? '',
+        photo: person.profilePath ? TMDB_PROFILE + person.profilePath : undefined,
+        department: person.knownForDepartment || undefined,
+        crew: toCredits(credits.crew, (c) => c.job),
+        cast: toCredits(credits.cast, (c) => c.character),
+      }
+    },
+    enabled: !!config,
+    staleTime: 10 * 60_000,
+    retry,
+  })
+}
+
+/** Several people at once (`@a @b`): data once all are loaded, else the first error. */
+export function useSeerrPeople(personIds: readonly number[]) {
+  const config = useSeerrConfig()
+  return useQueries({
+    queries: personIds.map((id) => personQuery(config, id)),
+    combine: (results) => ({
+      data: results.every((r) => r.data) ? results.map((r) => r.data as SeerrPersonDetails) : undefined,
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
   })
 }
 

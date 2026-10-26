@@ -14,6 +14,7 @@ import type { AudioStream, SubtitleStream } from '@/domain/tracks'
 import { episodePath, seriesPath } from '@/features/home/links'
 import { MediaItemCard } from '@/features/media/MediaItemCard'
 import { usePlay } from '@/features/player/player-context'
+import { ServiceLinks } from '@/features/requests/ServiceLinks'
 import { languageName } from '@/lib/languages'
 
 function trackList(streams: readonly (AudioStream | SubtitleStream)[]): string {
@@ -80,17 +81,22 @@ function MovieDetailsView({ movie }: { movie: MovieDetails }) {
               <PlayIcon className="size-4" />
               {resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
             </Button>
-            {resumeAt > 0 && <Button onClick={() => play(movie.id, 'beginning')}>Play from start</Button>}
-            <Button variant="ghost" onClick={toggleWatched}>
+            {resumeAt > 0 && (
+              <Button variant="outlined" onClick={() => play(movie.id, 'beginning')}>
+                Play from start
+              </Button>
+            )}
+            <Button variant="outlined" onClick={toggleWatched}>
               {movie.played ? 'Mark unwatched' : 'Mark watched'}
             </Button>
             <Button
-              variant={movie.isFavorite ? 'secondary' : 'ghost'}
+              variant="outlined"
               disabled={setFavorite.isPending}
               onClick={() => setFavorite.mutate({ itemId: movie.id, favorite: !movie.isFavorite })}
             >
               {movie.isFavorite ? '★ Favorite' : '☆ Favorite'}
             </Button>
+            <ServiceLinks kind="movie" tmdbId={movie.tmdbId} />
           </div>
 
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">

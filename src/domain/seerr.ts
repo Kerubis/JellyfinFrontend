@@ -1,6 +1,8 @@
 // Seerr (Overseerr / Jellyseerr) requests from the airing schedule (PLAN.md M19, D38). Our own shapes; the API DTOs
 // are mapped in src/api/seerr.ts.
 
+import { formatToken } from './searchQuery'
+
 /**
  * Server address, API key and routing rules, written by an admin into each profile allowed to request. Empty key
  * = off.
@@ -132,11 +134,82 @@ export type SeerrMedia = SeerrResult & {
   runtime?: number
   /** TMDB status, e.g. "Returning Series", "Released". */
   tmdbStatus?: string
-  networks: string[]
+  /** TV: where it airs (browsable); movies: none. */
+  networks: SeerrCompany[]
+  /** Production companies; only movies can be browsed by studio. */
+  studios: SeerrCompany[]
+  keywords: SeerrKeyword[]
+  /** Who made it and the main cast, grouped ("Directed by", "Cast", …). */
+  credits: SeerrCreditGroup[]
   /** By TMDB keyword / Japanese animation (isAnime); picks the anime route. */
   anime: boolean
   /** TV only, without specials (season 0). */
   seasons: SeerrSeason[]
+  /** Where Sonarr / Radarr manage the title (HD and 4K), as Seerr links them. */
+  services: SeerrService[]
+}
+
+/** `serverId`: Seerr's id of the Sonarr / Radarr server (see SeerrServer). */
+export type SeerrService = { serverId?: number; is4k: boolean; url: string }
+
+// --- Browsing by keyword, studio, network or person ------------------------------------------------------------
+
+export type SeerrKeyword = { id: number; name: string }
+/** A studio (production company) or TV network. */
+export type SeerrCompany = { id: number; name: string }
+export type SeerrPersonRef = { id: number; name: string }
+export type SeerrCreditGroup = { label: string; people: SeerrPersonRef[] }
+
+/** A person search hit. */
+export type SeerrPerson = SeerrPersonRef & { photo?: string; knownFor?: string }
+
+/** A keyword, person or studio found by name (autocomplete and resolving `#`, `@`, `$` tokens). */
+export type SeerrMatch = { id: number; name: string; photo?: string; detail?: string; popularity?: number }
+
+/** A title in a person's credits; `roles`: their jobs or characters in it. `date`: first release / air date. */
+export type SeerrCredit = SeerrResult & { roles: string[]; popularity: number; date?: string; rating?: number; votes?: number }
+
+export type SeerrPersonDetails = SeerrPerson & { department?: string; crew: SeerrCredit[]; cast: SeerrCredit[] }
+
+/**
+ * Discover filters, all of which must match: keywords, plus a studio (movies only) or network (TV only). Seerr
+ * can't filter TV by studio or movies by network.
+ */
+export type SeerrBrowse = { keywords: number[]; studio?: number; network?: number }
+
+export type SeerrSort = 'popular' | 'newest' | 'rated'
+
+export const SORT_LABEL: Record<SeerrSort, string> = { popular: 'Popular', newest: 'Newest', rated: 'Top rated' }
+
+/** "Top rated" without enough votes is noise (one 10/10 vote). */
+export const RATED_MIN_VOTES = 50
+
+/** A person's credits in the chosen order (discover sorts on the server). Top rated: well-voted titles first. */
+export function sortCredits(credits: readonly SeerrCredit[], sort: SeerrSort): SeerrCredit[] {
+  const rated = (c: SeerrCredit) => ((c.votes ?? 0) >= RATED_MIN_VOTES ? 1 : 0)
+  const compare: Record<SeerrSort, (a: SeerrCredit, b: SeerrCredit) => number> = {
+    popular: (a, b) => b.popularity - a.popularity,
+    // ISO dates compare as text; undated titles last.
+    newest: (a, b) => (b.date ?? '').localeCompare(a.date ?? ''),
+    rated: (a, b) => rated(b) - rated(a) || (b.rating ?? 0) - (a.rating ?? 0),
+  }
+  return [...credits].sort(compare[sort])
+}
+
+/** The network filter in the request page's URL (set from the details popup; TMDB has no network search). */
+export const parseNetwork = (value: string | null) => (value && /^\d+$/.test(value) ? Number(value) : undefined)
+
+export const parseSort = (value: string | null): SeerrSort => (value === 'newest' || value === 'rated' ? value : 'popular')
+
+/** The kinds a filter set can return. */
+export const browseKinds = (b: SeerrBrowse): SeerrKind[] => (b.studio !== undefined ? ['movie'] : b.network !== undefined ? ['tv'] : ['tv', 'movie'])
+
+/** Request-page links that start a fresh search (from the details popup). */
+export const browseLink = {
+  keyword: (name: string) => `/requests?q=${encodeURIComponent(formatToken('keyword', name))}`,
+  studio: (name: string) => `/requests?q=${encodeURIComponent(formatToken('studio', name))}`,
+  person: (name: string) => `/requests?q=${encodeURIComponent(formatToken('person', name))}`,
+  network: (networkId: number) => `/requests?network=${networkId}`,
 }
 
 /** One of the profile's own requests. */

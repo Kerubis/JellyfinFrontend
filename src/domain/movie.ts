@@ -27,4 +27,6 @@ export type MovieDetails = {
   isFavorite: boolean
   positionTicks: number
   tracks: MediaTracks
+  /** For Seerr lookups. */
+  tmdbId?: number
 }

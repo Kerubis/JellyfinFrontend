@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { MediaKind, MediaItem } from '@/domain/media'
 import type { MovieDetails, Person } from '@/domain/movie'
 import { apiFor, itemImageUrl } from '../client'
-import { toMediaItem } from '../mappers'
+import { tmdbIdOf, toMediaItem } from '../mappers'
 import { toMediaTracks } from '../playback'
 import { useSignedIn } from '../session-context'
 
@@ -40,6 +40,7 @@ export function useMovie(itemId: string) {
         isFavorite: !!data.UserData?.IsFavorite,
         positionTicks: data.UserData?.PlaybackPositionTicks ?? 0,
         tracks: source ? toMediaTracks(source) : { mediaSourceId: itemId, audio: [], subtitles: [] },
+        tmdbId: tmdbIdOf(data),
       }
     },
   })

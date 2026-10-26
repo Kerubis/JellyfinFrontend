@@ -99,8 +99,12 @@ export function EpisodePanel({ episodeId }: { episodeId: string }) {
             <PlayIcon className="size-4" />
             {resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
           </Button>
-          {resumeAt > 0 && <Button onClick={() => play(episode.id, 'beginning')}>Play from start</Button>}
-          <Button variant="ghost" onClick={toggleWatched}>
+          {resumeAt > 0 && (
+            <Button variant="outlined" onClick={() => play(episode.id, 'beginning')}>
+              Play from start
+            </Button>
+          )}
+          <Button variant="outlined" onClick={toggleWatched}>
             {played ? 'Mark unwatched' : 'Mark watched'}
           </Button>
         </div>

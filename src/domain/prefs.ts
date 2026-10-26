@@ -6,7 +6,7 @@
 import { DEFAULT_SECTIONS, normalizeSections, type DashboardSection } from './dashboard'
 import { DEFAULT_SAFETY, HHMM, type SafetyPrefs, type SafetyUsage } from './safety'
 import { AIR_TYPES, EPISODE_RANGE_MAX, type ScheduleFilters } from './schedule'
-import { normalizeRouting, normalizeSeerrUrl, type SeerrConfig } from './seerr'
+import { normalizeRouting, normalizeSeerrUrl, parseSort, type SeerrConfig, type SeerrKeyword, type SeerrSort } from './seerr'
 import type { PartialRule, SubtitleMode, TrackMemory } from './tracks'
 import { normalizeLanguage } from '@/lib/languages'
 import type { TimeFormat } from '@/lib/time'
@@ -50,6 +50,16 @@ export type UiPrefs = {
   /** Clock times: follow the browser's language, or always 24 / 12 hours. */
   timeFormat: TimeFormat
 }
+
+export type RequestPrefs = {
+  /** Sort of the request page's browse and person views. */
+  sort: SeerrSort
+  /** Starred keywords: first in the search dropdown (a bare `#` lists them all), and they win namesakes. */
+  favoriteKeywords: SeerrKeyword[]
+}
+
+/** Plenty for a personal list; keeps the stored value small. */
+export const FAVORITE_KEYWORDS_MAX = 200
 
 /** navColors key of the "Home" link. */
 export const NAV_HOME = 'home'
@@ -138,6 +148,8 @@ export type PrefsSchema = {
   animeSchedule: { appId: string; token: string }
   /** Seerr server; written by an admin into each profile allowed to request (Settings → Seerr). */
   seerr: SeerrConfig
+  /** The profile's own request page settings (sort, favorite keywords). */
+  requests: RequestPrefs
 }
 
 export type PrefKey = keyof PrefsSchema
@@ -263,6 +275,19 @@ export const PREF_DEFS: { [K in PrefKey]: PrefDef<PrefsSchema[K]> } = {
     version: 1,
     defaults: { appId: '', token: '' },
     normalize: (v) => ({ appId: v.appId.trim(), token: v.token.trim() }),
+  },
+  requests: {
+    version: 1,
+    defaults: { sort: 'popular', favoriteKeywords: [] },
+    normalize: (v) => {
+      const seen = new Set<number>()
+      const favoriteKeywords = (Array.isArray(v.favoriteKeywords) ? (v.favoriteKeywords as unknown[]) : []).flatMap((k) =>
+        isRecord(k) && typeof k.id === 'number' && Number.isInteger(k.id) && k.id > 0 && typeof k.name === 'string' && k.name.trim() && !seen.has(k.id) && seen.add(k.id)
+          ? [{ id: k.id, name: k.name.trim() }]
+          : [],
+      )
+      return { sort: parseSort(typeof v.sort === 'string' ? v.sort : null), favoriteKeywords: favoriteKeywords.slice(0, FAVORITE_KEYWORDS_MAX) }
+    },
   },
   seerr: {
     version: 1,

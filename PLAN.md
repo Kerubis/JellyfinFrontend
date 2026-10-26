@@ -506,7 +506,15 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 - [x] Destination (D39): HD / 4K toggle (only with a 4K server; chips and badge then show the 4K state), server dropdown prefilled from the admin's routing (anime without a saved route: the "…anime…" server), quality profile / root folder always shown; warns when Seerr ignored the server (user without "Advanced Requests"); admin routing table in Settings → Seerr
 - Note: requests made in Seerr's own UI still go to Seerr's default Sonarr (it never switches servers for anime). Setup here (2026-10-23): sonarr-1080p (default), sonarr-2160p (default 4K), sonarr-anime
 - [x] Verified by the user 2026-10-23: search, popup, requesting
-- [ ] Verify the destination: anime → sonarr-anime from the schedule and the Request page, 4K state, the warning for a user without "Advanced Requests"
+- [x] Verify the destination: anime → sonarr-anime from the schedule and the Request page, 4K state, the warning for a user without "Advanced Requests"
+- [x] "Open in Sonarr / Radarr" on series and movie pages (admins only): Seerr's `mediaInfo.serviceUrl` / `serviceUrl4k`, labelled with the Seerr server name; matched by the item's TMDB provider id
+- [ ] Verify by the user: the links on a series (anime / TV) and a movie page
+- [x] Search syntax (2026-10-26): plain words search titles; `#keyword`, `@person`, `$studio` tokens, space-separated, `_` for spaces inside a name (`@Tom_Holland`, `#time_travel`; `@"Tom Holland"` also works). The whole field is `q` in the URL. Tokens resolve by exact name (any case); repeated names take the most popular person, or the oldest keyword / studio (lowest id: "Toei Animation" JP 5542 has the films, the US duplicate none). Seerr's `studio` filter takes one id
+  - One dropdown: it completes the token at the caret, and for plain words offers matching people / keywords / studios (grouped) that replace those words with the token; nothing is preselected there, so Enter still searches titles (↑↓, Enter / Tab, Escape). The field colours tokens by type; ignored parts are red, unknown tokens red with a wavy underline, each with a line saying why
+  - `#a #b` (+ one `$studio`, movies only, or a network from the popup, TV only): titles matching **all** (`/discover`), sorted Popular / Newest / Top rated (≥ 50 votes); title words with them are ignored (user decision). The sort also applies to the person view (Top rated: titles with ≥ 50 votes first) and is remembered per profile (synced pref `requests.sort`). `@a`: crew "Worked on" / cast "Appeared in"; `@a @b`: titles they share; title words filter by title; `#` / `$` with `@` are ignored (Seerr can't filter by person, credits have no keywords). Credits carry no request state (accepted)
+  - Favorite keywords (☆ / ★ in the dropdown, synced pref `requests.favoriteKeywords`, max 200): listed first when their name contains the typed text (matched locally, so also when TMDB's first page misses them), a bare `#` lists them all, and a favorite wins over namesakes when resolving
+  - Details popup: keywords, people (created by, directed by, writing, cast), studios (movies) open the page with that token; networks (TV) set the network chip (TMDB has no network search). Proxies (vite.config.ts, nginx) allow the new read-only endpoints
+- [ ] Verify by the user: typing tokens + autocomplete, red marks, keyword AND, studio / network, one and two people, popup links, Back
 ---
 
 ## 5. Open questions
@@ -515,8 +523,8 @@ Deprioritized, moved to [PLAN2.md](PLAN2.md).
 - [ ] **Server: NVENC/CUDA hardware encoding fails** (`CUDA_ERROR_NO_DEVICE` in the FFmpeg log, 2026-10-15), so every real transcode returns HTTP 500 (e.g. American Made: DTS-HD audio + forced PGS subtitle). Direct play/remux is unaffected. Fix GPU access for the Jellyfin container, or switch hardware acceleration off until then
 - [ ] Segment provider: none installed (checked 2026-10-15: no plugin, `/MediaSegments` empty). The app falls back to chapter names; installing e.g. Intro Skipper would cover files without chapters
 - [x] **Following**: decided: separate list in prefs (`following.followed`), favorites stay independent. "Import favorites" can come later.
-- [ ] Kids: no kid user yet (2026-10-15); create one in the Jellyfin dashboard to test M10
+- [x] Kids: no kid user yet (2026-10-15); create one in the Jellyfin dashboard to test M10
 - [ ] TV browser: Chromium/Firefox in kiosk mode? Input device (keyboard, remote, gamepad, CEC)? This affects the codec profile and navigation.
-- [ ] How common are PGS subs in the library (decides when client-side PGS is worth it)?
+- [x] How common are PGS subs in the library (decides when client-side PGS is worth it)?
 - [ ] `CustomPrefs` value size limits and whether admins can write other users' prefs (M2 spike)
 - [ ] Production hosting: static files behind the same reverse proxy as Jellyfin (no CORS) or separate origin?

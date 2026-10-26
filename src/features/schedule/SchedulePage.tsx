@@ -191,7 +191,7 @@ export function SchedulePage() {
         aria-label="Search the schedule by title or genre"
         onChange={(e) => setParam('q', e.target.value || null, true)}
         onKeyDown={(e) => e.key === 'Escape' && query && setParam('q', null, true)}
-        className="w-full self-center rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none sm:w-80"
+        className="w-full self-center rounded border border-neutral-600 bg-neutral-900 px-2 py-1 text-sm placeholder:text-neutral-600 focus:border-accent-500 focus:outline-none sm:w-80"
       />
 
       {showFilters && <ScheduleFiltersPanel filters={filters} update={update} platforms={platforms} />}

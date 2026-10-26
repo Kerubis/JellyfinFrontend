@@ -9,15 +9,16 @@ const KIND_LABEL = { movie: 'Movie', tv: 'TV' } as const
  * A movie or show from Seerr: poster with its Seerr state in the marker corner. Titles in the library get the
  * Jellyfin-blue ring and open their own page (like the schedule); the rest open the request popup.
  */
-export function SeerrTile({ result, onOpen }: { result: SeerrResult; onOpen: () => void }) {
+export function SeerrTile({ result, detail, onOpen }: { result: SeerrResult; /** e.g. a person's roles in it. */ detail?: string; onOpen: () => void }) {
   const path = libraryPath(result)
-  const label = `${result.title}${result.year ? ` (${result.year})` : ''}${path ? '\nIn your library' : ''}`
+  const label = `${result.title}${result.year ? ` (${result.year})` : ''}${detail ? `\n${detail}` : ''}${path ? '\nIn your library' : ''}`
   const caption = (
     <>
       <div className="mt-1 truncate text-xs leading-tight font-medium">{result.title}</div>
       <div className="truncate text-[11px] leading-tight text-neutral-400">
         {KIND_LABEL[result.kind]}
         {result.year && ` · ${result.year}`}
+        {detail && ` · ${detail}`}
       </div>
     </>
   )

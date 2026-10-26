@@ -5,6 +5,7 @@ import { PlayIcon, PlayOverlay } from '@/components/PlayOverlay'
 import { DEFAULT_NEW_DAYS } from '@/domain/dashboard'
 import { episodeLabel, type EpisodeRef } from '@/domain/media'
 import type { SeriesDetails } from '@/domain/series'
+import { ServiceLinks } from '@/features/requests/ServiceLinks'
 import { useHiddenFromWatching } from '@/hooks/useHiddenFromWatching'
 
 type Props = {
@@ -66,17 +67,18 @@ export function SeriesHeader({ series, playedCount, totalCount, next, playTarget
           </button>
         )}
         {/* Shows enter Currently Watching by being watched (§3.9); here they can only be removed or brought back. */}
-        {(inCurrentlyWatching || removed.isHidden(series.id)) && (
-          <div className="mt-1 flex flex-wrap gap-2">
-            {inCurrentlyWatching ? (
-              <Button onClick={() => removed.hide(series.id)}>Remove from Currently Watching</Button>
-            ) : (
-              <Button onClick={() => removed.unhide(series.id)} title="It sits in New Episodes while removed">
+        <div className="mt-1 flex flex-wrap gap-2 empty:hidden">
+          {inCurrentlyWatching ? (
+            <Button variant="outlined" onClick={() => removed.hide(series.id)}>Remove from Currently Watching</Button>
+          ) : (
+            removed.isHidden(series.id) && (
+              <Button variant="outlined" onClick={() => removed.unhide(series.id)} title="It sits in New Episodes while removed">
                 Back to Currently Watching
               </Button>
-            )}
-          </div>
-        )}
+            )
+          )}
+          <ServiceLinks kind="tv" tmdbId={series.tmdbId} />
+        </div>
       </div>
     </header>
   )

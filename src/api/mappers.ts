@@ -148,7 +148,14 @@ export function toSeriesDetails(server: Server, dto: BaseItemDto): SeriesDetails
     genres: dto.Genres ?? [],
     communityRating: dto.CommunityRating ?? undefined,
     officialRating: dto.OfficialRating ?? undefined,
+    tmdbId: tmdbIdOf(dto),
   }
+}
+
+/** TMDB id from the provider ids (a numeric string), when the item has one. */
+export function tmdbIdOf(dto: BaseItemDto): number | undefined {
+  const id = Number(dto.ProviderIds?.Tmdb)
+  return Number.isInteger(id) && id > 0 ? id : undefined
 }
 
 export function toSeason(server: Server, dto: BaseItemDto): Season {
